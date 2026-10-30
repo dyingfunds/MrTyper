@@ -65,6 +65,7 @@ public/logo.svg            Glass mark used in-app
 scripts/generate_icons.py  Rebuilds icon sizes from icon.png
 scripts/generate_installer_art.py  Rebuilds branded NSIS bitmaps
 docs/                      README screenshots
+release/                   Prebuilt Windows installer + checksum
 ```
 
 ## Requirements
@@ -85,6 +86,20 @@ pnpm tauri:dev
 `pnpm tauri:dev` starts Vite and the native app together. The first Rust build downloads and compiles the Tauri dependency graph, so it can take several minutes.
 
 For UI-only work, run `pnpm dev` in a browser. The app automatically uses a localStorage-backed mock engine at `http://localhost:1420`; it is a design preview and **does not inject keystrokes**.
+
+## Install
+
+A self-contained Windows x64 installer is included in the repository:
+
+**[release/MrTyper_1.0.0_x64-setup.exe](release/MrTyper_1.0.0_x64-setup.exe)**
+
+1. Verify the file against [release/SHA256SUMS.txt](release/SHA256SUMS.txt).
+2. Double-click the setup and approve Windows SmartScreen if you trust the build.
+3. Launch **MrTyper** and use it as described below.
+
+It performs a per-user installation under `%LOCALAPPDATA%\MrTyper`, so it does not normally need administrator rights. If the setup was opened by a low-integrity shell or file viewer, use [release/install-elevated.cmd](release/install-elevated.cmd) instead. The installer is unsigned, so Windows may show a publisher warning; code-signing is recommended before wider distribution. It contains no personal data or user-profile build paths.
+
+The installer can bootstrap the WebView2 runtime if it is missing; that is the only optional network step. See [Installation troubleshooting](#installation-troubleshooting) if Windows blocks the setup.
 
 ## Build a single installer
 
@@ -142,10 +157,11 @@ If the setup was started by a low-integrity shell, file viewer, or sandboxed age
 
 Close the setup with **Abort**, then launch it with normal rights:
 
+- Use [release/install-elevated.cmd](release/install-elevated.cmd), or
 - Right-click the setup executable and choose **Run as administrator**, or
 - Launch it from an elevated PowerShell window.
 
-For a setup built from source, the relevant path is `src-tauri\target\release\bundle\nsis\`. This avoids relying on a machine-specific absolute path.
+For a setup built from source, the relevant path is `src-tauri\target\release\bundle\nsis\`.
 
 If the installer was previously running, make sure it has fully closed first (check Task Manager for `MrTyper_1.0.0_x64-setup`).
 
