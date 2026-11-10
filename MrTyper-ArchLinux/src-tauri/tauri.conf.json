@@ -1,0 +1,71 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "MrTyper",
+  "version": "2.0.0",
+  "identifier": "com.mrtyper.desktop",
+  "build": {
+    "beforeDevCommand": "pnpm dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "pnpm build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "MrTyper",
+        "create": false,
+        "width": 1220,
+        "height": 900,
+        "minWidth": 980,
+        "minHeight": 700,
+        "center": true,
+        "decorations": false,
+        "transparent": false,
+        "shadow": true,
+        "resizable": true,
+        "visible": false,
+        "dragDropEnabled": false
+      }
+    ],
+    "security": {
+      "csp": null,
+      "capabilities": [
+        "default"
+      ]
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": [
+      "appimage",
+      "deb",
+      "rpm"
+    ],
+    "publisher": "MrTyper",
+    "copyright": "Copyright © 2026 MrTyper",
+    "category": "Utility",
+    "shortDescription": "Human-paced typing into any Linux window.",
+    "longDescription": "MrTyper types a script into whatever window you focus, with human-like pauses, typo corrections, and customizable speed. Works on X11 and wlroots-based Wayland compositors. Everything stays local.",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.png"
+    ],
+    "linux": {
+      "deb": {
+        "depends": [
+          "libayatana-appindicator3-1",
+          "libxkbcommon0"
+        ]
+      },
+      "rpm": {
+        "depends": [
+          "libayatana-appindicator-gtk3",
+          "libxkbcommon"
+        ]
+      }
+    }
+  }
+}

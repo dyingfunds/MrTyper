@@ -1,0 +1,143 @@
+/* ------------------------------------------------------------------ */
+/*  Design tokens                                                      */
+/*  A matte instrument: graphite surfaces, one loud accent.            */
+/* ------------------------------------------------------------------ */
+
+:root {
+  color-scheme: dark;
+
+  --font-sans: "Geist Variable", "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  --font-mono: "Geist Mono Variable", "Cascadia Mono", Consolas, ui-monospace, monospace;
+  --font-display: "Bricolage Grotesque Variable", "Geist Variable", "Segoe UI", sans-serif;
+
+  --bg: #08090a;
+  --surface: #0f1012;
+  --surface-2: #15171a;
+  --surface-3: #1d2024;
+  --surface-4: #272b30;
+
+  --line: rgba(255, 255, 255, 0.07);
+  --line-2: rgba(255, 255, 255, 0.13);
+  --line-3: rgba(255, 255, 255, 0.22);
+
+  --text: #f1f2ec;
+  --text-2: #a8aba2;
+  --text-3: #72756d;
+  --text-4: #4a4d47;
+
+  --accent: #c8ff2e;
+  --accent-ink: #101800;
+  --accent-text: #c8ff2e;
+
+  --danger: #ff5340;
+  --danger-ink: #1f0300;
+  --warn: #ffb224;
+  --ok: #4fe08a;
+
+  /* Unlit tracks, meters and LEDs. */
+  --track: var(--surface-4);
+  /* Thin accent marks (fills, LEDs, ticks) that must read on the background. */
+  --accent-mark: var(--accent);
+
+  --accent-soft: color-mix(in oklab, var(--accent) 11%, transparent);
+  --accent-line: color-mix(in oklab, var(--accent) 42%, transparent);
+  --accent-glow: color-mix(in oklab, var(--accent) 38%, transparent);
+  --danger-soft: color-mix(in oklab, var(--danger) 12%, transparent);
+  --danger-line: color-mix(in oklab, var(--danger) 40%, transparent);
+
+  --dot: rgba(255, 255, 255, 0.055);
+  --scrim: rgba(4, 5, 6, 0.74);
+  --shadow-pop: 0 28px 70px -24px rgba(0, 0, 0, 0.85), 0 2px 0 rgba(255, 255, 255, 0.03) inset;
+  --thumb: #f1f2ec;
+  --thumb-shadow: 0 2px 6px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(0, 0, 0, 0.4);
+
+  --radius-panel: 14px;
+  --radius-control: 9px;
+  --radius-small: 6px;
+
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+
+  --bg: #e4e3dc;
+  --surface: #efeee8;
+  --surface-2: #f7f6f1;
+  --surface-3: #ffffff;
+  --surface-4: #ffffff;
+
+  --line: rgba(24, 26, 14, 0.09);
+  --line-2: rgba(24, 26, 14, 0.16);
+  --line-3: rgba(24, 26, 14, 0.3);
+
+  --text: #15160f;
+  --text-2: #50524a;
+  --text-3: #7f8177;
+  --text-4: #b1b3a8;
+
+  --accent: #bdf01c;
+  --accent-ink: #121a00;
+  --accent-text: #456c00;
+
+  --danger: #de3b26;
+  --danger-ink: #ffffff;
+  --warn: #b26f00;
+  --ok: #188a48;
+
+  --track: #d5d4c9;
+  --accent-mark: var(--accent-text);
+
+  --accent-soft: color-mix(in oklab, var(--accent) 26%, transparent);
+  --accent-line: color-mix(in oklab, var(--accent-text) 46%, transparent);
+  --accent-glow: color-mix(in oklab, var(--accent) 55%, transparent);
+
+  --dot: rgba(24, 26, 14, 0.075);
+  --scrim: rgba(228, 227, 220, 0.8);
+  --shadow-pop: 0 28px 60px -28px rgba(40, 42, 24, 0.45), 0 0 0 1px rgba(24, 26, 14, 0.04);
+  --thumb: #15160f;
+  --thumb-shadow: 0 2px 6px rgba(30, 32, 18, 0.28);
+}
+
+/* Accent families ---------------------------------------------------- */
+
+:root[data-accent="ember"] {
+  --accent: #ff6a2a;
+  --accent-ink: #1c0700;
+  --accent-text: #ff8650;
+  /* The default red sits too close to orange: shift typos and Stop to rose. */
+  --danger: #ff3d7f;
+}
+
+:root[data-accent="ice"] {
+  --accent: #4fe3ff;
+  --accent-ink: #00161c;
+  --accent-text: #6be8ff;
+}
+
+:root[data-accent="orchid"] {
+  --accent: #ff62d0;
+  --accent-ink: #22001a;
+  --accent-text: #ff82da;
+}
+
+:root[data-theme="light"][data-accent="ember"] {
+  --accent: #ff6524;
+  --accent-ink: #1c0700;
+  --accent-text: #c63c00;
+  --danger: #d4185a;
+}
+
+:root[data-theme="light"][data-accent="ice"] {
+  --accent: #2fd2f2;
+  --accent-ink: #00161c;
+  --accent-text: #00758c;
+}
+
+:root[data-theme="light"][data-accent="orchid"] {
+  --accent: #f755c6;
+  --accent-ink: #22001a;
+  --accent-text: #b31187;
+}

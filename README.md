@@ -1,6 +1,16 @@
 # MrTyper
 
-**A human-paced typing companion for Windows.** Paste a script, set a tempo, and let MrTyper type it into whatever window you focus — with deliberate pauses, occasional corrections, and a live view of every keystroke as it lands.
+**A human-paced typing companion for Windows, macOS, and Arch Linux.** Paste a script, set a tempo, and let MrTyper type it into whatever window you focus — with deliberate pauses, occasional corrections, and a live view of every keystroke as it lands.
+
+## Pick your platform
+
+| Platform | Folder | Get it |
+| --- | --- | --- |
+| **Windows** 10/11 | this folder (repository root) | [release/MrTyper_2.0.0_x64-setup.exe](release/MrTyper_2.0.0_x64-setup.exe) |
+| **macOS** 11+ (Apple Silicon and Intel) | [MrTyper-macOS/](MrTyper-macOS/) | `.dmg` from the [Build workflow](.github/workflows/build.yml) artifacts; see the [macOS README](MrTyper-macOS/README.md) |
+| **Arch Linux** (and other distros) | [MrTyper-ArchLinux/](MrTyper-ArchLinux/) | `makepkg -si` with the included PKGBUILD, or the AppImage / deb / rpm artifacts; see the [Linux README](MrTyper-ArchLinux/README.md) |
+
+All three share the same interface, engine, presets and settings format. Each folder is a complete, self-contained project; only the operating-system layer differs. The rest of this README describes the Windows app.
 
 ![MrTyper Type screen in dark mode](docs/preview-type-dark.png)
 
@@ -71,6 +81,9 @@ scripts/generate_icons.py  Rebuilds icon sizes from icon.png (render it first wi
 scripts/generate_installer_art.py  Rebuilds branded NSIS bitmaps
 docs/                      README screenshots
 release/                   Prebuilt Windows installer + checksum
+MrTyper-macOS/             The macOS app (same layout as above)
+MrTyper-ArchLinux/         The Linux app, plus packaging/arch/PKGBUILD
+.github/workflows/         Builds and tests all three apps on real machines
 ```
 
 ## Requirements

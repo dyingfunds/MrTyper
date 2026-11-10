@@ -1,0 +1,41 @@
+[package]
+name = "mrtyper"
+version = "2.0.0"
+description = "Human-paced typing into any Linux window (X11 and wlroots Wayland)"
+authors = ["MrTyper"]
+license = "MIT"
+repository = ""
+edition = "2021"
+rust-version = "1.90"
+
+[lib]
+name = "mrtyper_lib"
+# Desktop-only application: the binary links the library as an rlib. Keeping
+# mobile crate types here would make MinGW builds export an oversized DLL.
+crate-type = ["rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["tray-icon"] }
+tauri-plugin-global-shortcut = "2"
+tauri-plugin-single-instance = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+rand = "0.8.5"
+
+[target.'cfg(target_os = "linux")'.dependencies]
+# Only the X11 (XTest) and Wayland (virtual keyboard) backends. The libei
+# backend is left out: it prompts on every connection and can panic when the
+# desktop portal is missing.
+enigo = { version = "0.6", default-features = false, features = ["x11rb", "wayland"] }
+# Reads _NET_ACTIVE_WINDOW for the focus guard. Same major version Tauri uses.
+x11rb = "0.13"
+
+[profile.release]
+panic = "abort"
+codegen-units = 1
+lto = true
+opt-level = "s"
+strip = true

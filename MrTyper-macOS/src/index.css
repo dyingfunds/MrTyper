@@ -1,0 +1,13 @@
+@import "tailwindcss";
+@import "./styles/tokens.css";
+@import "./styles/base.css";
+@import "./styles/shell.css";
+@import "./styles/controls.css";
+@import "./styles/type.css";
+@import "./styles/pages.css";
+@import "./styles/overlays.css";
+
+@theme {
+  --font-sans: "Geist Variable", "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  --font-mono: "Geist Mono Variable", "Cascadia Mono", Consolas, ui-monospace, monospace;
+}

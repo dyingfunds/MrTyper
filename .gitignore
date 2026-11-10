@@ -3,8 +3,13 @@ node_modules/
 
 # Build output
 dist/
-src-tauri/target/
-src-tauri/gen/
+**/src-tauri/target/
+**/src-tauri/gen/
+
+# makepkg working folders and packages
+**/packaging/arch/src/
+**/packaging/arch/pkg/
+*.pkg.tar.zst
 
 # Local env
 .env

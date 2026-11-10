@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=MrTyper
+GenericName=Human-paced typing
+Comment=Type a script into any window with human pauses, typos and corrections
+Exec=mrtyper
+Icon=mrtyper
+Terminal=false
+Categories=Utility;
+Keywords=typing;typer;autotype;keyboard;
+StartupWMClass=mrtyper

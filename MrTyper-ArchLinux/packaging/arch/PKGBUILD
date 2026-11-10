@@ -1,0 +1,62 @@
+# Maintainer: dyingfunds <https://github.com/dyingfunds>
+#
+# Builds MrTyper from this checkout of the repository:
+#
+#   cd MrTyper-ArchLinux/packaging/arch
+#   makepkg -si
+
+pkgname=mrtyper
+pkgver=2.0.0
+pkgrel=1
+pkgdesc="Human-paced typing into any window, with pauses, typos and corrections"
+arch=('x86_64' 'aarch64')
+url="https://github.com/dyingfunds/MrTyper"
+license=('MIT')
+depends=(
+  'webkit2gtk-4.1'
+  'gtk3'
+  'libayatana-appindicator'
+  'libxkbcommon'
+  'hicolor-icon-theme'
+)
+makedepends=('rust' 'nodejs' 'pnpm')
+# Cargo already builds with LTO; makepkg's own LTO flags only slow it down.
+options=('!lto' '!debug')
+
+# The app sources are the folder two levels up from this PKGBUILD.
+_appdir() {
+  realpath "$startdir/../.."
+}
+
+prepare() {
+  cd "$(_appdir)"
+  pnpm install --frozen-lockfile
+}
+
+build() {
+  cd "$(_appdir)"
+  # Release binary only; this PKGBUILD does the packaging. The wrapper strips
+  # build-machine paths (and so your user name) from the binary.
+  pnpm tauri:build --no-bundle
+}
+
+check() {
+  cd "$(_appdir)"
+  cargo test --release --manifest-path src-tauri/Cargo.toml
+}
+
+package() {
+  cd "$(_appdir)"
+  install -Dm755 src-tauri/target/release/mrtyper "$pkgdir/usr/bin/mrtyper"
+  install -Dm644 packaging/arch/mrtyper.desktop "$pkgdir/usr/share/applications/mrtyper.desktop"
+
+  local size
+  for size in 32 128; do
+    install -Dm644 "src-tauri/icons/${size}x${size}.png" \
+      "$pkgdir/usr/share/icons/hicolor/${size}x${size}/apps/mrtyper.png"
+  done
+  install -Dm644 src-tauri/icons/128x128@2x.png "$pkgdir/usr/share/icons/hicolor/256x256/apps/mrtyper.png"
+  install -Dm644 src-tauri/icons/icon.png "$pkgdir/usr/share/icons/hicolor/512x512/apps/mrtyper.png"
+
+  install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+}

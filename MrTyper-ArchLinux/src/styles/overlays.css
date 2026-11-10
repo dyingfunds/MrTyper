@@ -1,0 +1,365 @@
+/* ------------------------------------------------------------------ */
+/*  Countdown                                                          */
+/* ------------------------------------------------------------------ */
+
+.countdown {
+  position: absolute;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  background: color-mix(in oklab, var(--bg) 94%, transparent);
+}
+
+.countdown-rings {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+}
+
+.countdown-rings i {
+  position: absolute;
+  left: -330px;
+  top: -330px;
+  width: 660px;
+  height: 660px;
+  border: 1px solid var(--accent-line);
+  border-radius: 50%;
+  opacity: 0;
+  animation: ring-out 3s linear infinite;
+}
+
+.countdown-rings i:nth-child(2) {
+  animation-delay: 1s;
+}
+
+.countdown-rings i:nth-child(3) {
+  animation-delay: 2s;
+}
+
+@keyframes ring-out {
+  0% {
+    opacity: 0;
+    transform: scale(0.34);
+  }
+  12% {
+    opacity: 0.7;
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.6);
+  }
+}
+
+.countdown-kicker {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  color: var(--text-2);
+}
+
+.countdown-dial {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 300px;
+  height: 300px;
+  margin: 18px 0 14px;
+}
+
+.countdown-dial svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  transform: rotate(-90deg);
+}
+
+.countdown-dial-track {
+  fill: none;
+  stroke: var(--track);
+  stroke-width: 3;
+}
+
+.countdown-dial-sweep {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-dasharray: 1000;
+  filter: drop-shadow(0 0 8px var(--accent-glow));
+  transition: stroke-dashoffset 1000ms linear;
+}
+
+:root[data-theme="light"] .countdown-dial-sweep {
+  stroke: var(--accent-text);
+}
+
+.countdown-number {
+  position: absolute;
+  font-family: var(--font-display);
+  font-stretch: 76%;
+  font-size: 190px;
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: -0.06em;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+}
+
+.countdown-title {
+  position: relative;
+  font-family: var(--font-display);
+  font-stretch: 80%;
+  font-size: 30px;
+  font-weight: 700;
+  letter-spacing: -0.035em;
+  line-height: 1.05;
+}
+
+.countdown-copy {
+  position: relative;
+  max-width: 400px;
+  margin-top: 10px;
+  color: var(--text-2);
+  font-size: 13px;
+  line-height: 1.6;
+  text-align: center;
+}
+
+.countdown-actions {
+  position: relative;
+  margin-top: 24px;
+}
+
+/* ------------------------------------------------------------------ */
+/*  Toasts                                                             */
+/* ------------------------------------------------------------------ */
+
+.toast-host {
+  position: absolute;
+  right: 18px;
+  bottom: 18px;
+  z-index: 80;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+  width: min(380px, calc(100% - 36px));
+  pointer-events: none;
+}
+
+.toast {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: 11px;
+  width: 100%;
+  padding: 12px 10px 13px 14px;
+  overflow: hidden;
+  border: 1px solid var(--line-2);
+  border-radius: 11px;
+  background: var(--surface-3);
+  box-shadow: var(--shadow-pop);
+  pointer-events: auto;
+  --tone: var(--text-2);
+}
+
+.toast.is-success {
+  --tone: var(--ok);
+}
+
+.toast.is-error {
+  --tone: var(--danger);
+}
+
+.toast.is-warning {
+  --tone: var(--warn);
+}
+
+.toast.is-info {
+  --tone: var(--accent-text);
+}
+
+.toast::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: var(--tone);
+}
+
+.toast-icon {
+  display: flex;
+  flex: none;
+  margin-top: 1px;
+  color: var(--tone);
+}
+
+.toast-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+
+.toast-title {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.toast-message {
+  color: var(--text-2);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.toast-dismiss {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  flex: none;
+  border-radius: 6px;
+  color: var(--text-3);
+  transition:
+    background 120ms ease,
+    color 120ms ease;
+}
+
+.toast-dismiss:hover {
+  background: var(--surface-4);
+  color: var(--text);
+}
+
+.toast-timer {
+  position: absolute;
+  left: 3px;
+  right: 0;
+  bottom: 0;
+  height: 2px;
+  background: var(--tone);
+  opacity: 0.5;
+  transform-origin: left center;
+  animation: toast-timer 4.8s linear forwards;
+}
+
+@keyframes toast-timer {
+  to {
+    transform: scaleX(0);
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/*  Modal                                                              */
+/* ------------------------------------------------------------------ */
+
+.modal-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 70;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: var(--scrim);
+}
+
+.modal {
+  position: relative;
+  width: min(440px, 100%);
+  padding: 24px;
+  border: 1px solid var(--line-2);
+  border-radius: 16px;
+  background: var(--surface-2);
+  box-shadow: var(--shadow-pop);
+}
+
+.modal::before {
+  content: "";
+  position: absolute;
+  left: 24px;
+  top: -1px;
+  width: 36px;
+  height: 3px;
+  border-radius: 0 0 3px 3px;
+  background: var(--accent);
+}
+
+.modal-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.modal-title {
+  font-family: var(--font-display);
+  font-stretch: 80%;
+  font-size: 26px;
+  font-weight: 700;
+  letter-spacing: -0.035em;
+  line-height: 1.05;
+}
+
+.modal-copy {
+  margin-top: 8px;
+  color: var(--text-2);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.modal-body {
+  margin-top: 20px;
+}
+
+.modal-stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin-top: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+  background: var(--surface);
+}
+
+.modal-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+}
+
+.modal-stat + .modal-stat {
+  border-left: 1px solid var(--line);
+}
+
+.modal-stat strong {
+  font-family: var(--font-mono);
+  font-size: 13.5px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 22px;
+}
+
+/* Portalled dialogs position themselves against the window frame. */
+#overlay-root {
+  display: contents;
+}
