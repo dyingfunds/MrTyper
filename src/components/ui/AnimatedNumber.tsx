@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from "react";
-import { animate, useMotionValue, useMotionValueEvent, useReducedMotion } from "framer-motion";
+import { animate, useReducedMotionConfig } from "framer-motion";
+import { useEffect, useRef } from "react";
 
 interface AnimatedNumberProps {
   value: number;
@@ -7,40 +7,47 @@ interface AnimatedNumberProps {
   className?: string;
 }
 
+const defaultFormat = (value: number) => Math.round(value).toString();
+
 /**
- * A spring-damped numeric readout. Motion values update the DOM through React state,
- * but only while a parent value is actually changing.
+ * A spring-damped numeric readout. Frames are written straight to the text node,
+ * so a counting number never re-renders its parent.
  */
 export function AnimatedNumber({
   value,
-  format = (next) => Math.round(next).toString(),
+  format = defaultFormat,
   className,
 }: AnimatedNumberProps) {
-  const reducedMotion = useReducedMotion();
-  const motionValue = useMotionValue(value);
+  const reducedMotion = useReducedMotionConfig();
+  const nodeRef = useRef<HTMLSpanElement>(null);
+  const currentRef = useRef(value);
   const formatRef = useRef(format);
-  const [display, setDisplay] = useState(() => format(value));
-
   formatRef.current = format;
 
-  useMotionValueEvent(motionValue, "change", (latest) => {
-    setDisplay(formatRef.current(latest));
-  });
-
   useEffect(() => {
-    if (reducedMotion) {
-      motionValue.set(value);
-      setDisplay(formatRef.current(value));
+    const node = nodeRef.current;
+    if (!node) return;
+    if (reducedMotion || currentRef.current === value) {
+      currentRef.current = value;
+      node.textContent = formatRef.current(value);
       return;
     }
-    const controls = animate(motionValue, value, {
+    const controls = animate(currentRef.current, value, {
       type: "spring",
-      stiffness: 160,
-      damping: 24,
-      mass: 0.9,
+      stiffness: 190,
+      damping: 28,
+      mass: 0.8,
+      onUpdate: (latest) => {
+        currentRef.current = latest;
+        node.textContent = formatRef.current(latest);
+      },
     });
     return () => controls.stop();
-  }, [motionValue, reducedMotion, value]);
+  }, [reducedMotion, value]);
 
-  return <span className={className}>{display}</span>;
+  return (
+    <span ref={nodeRef} className={className}>
+      {format(currentRef.current)}
+    </span>
+  );
 }

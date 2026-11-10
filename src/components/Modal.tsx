@@ -1,14 +1,8 @@
 import { AnimatePresence, motion } from "framer-motion";
 import { X } from "lucide-react";
-import {
-  useEffect,
-  useId,
-  useRef,
-  type ReactNode,
-} from "react";
+import { useEffect, useId, useRef, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { overlayTransition } from "../lib/motion";
-import { GlassCard } from "./GlassCard";
 
 interface ModalProps {
   open: boolean;
@@ -25,6 +19,8 @@ export function Modal({ open, onClose, title, description, children }: ModalProp
   const titleId = useId();
   const descriptionId = useId();
   const panelRef = useRef<HTMLDivElement>(null);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
 
   useEffect(() => {
     if (!open) return;
@@ -34,14 +30,15 @@ export function Modal({ open, onClose, title, description, children }: ModalProp
       const preferred = panelRef.current?.querySelector<HTMLElement>(
         "input:not([disabled]), textarea:not([disabled])",
       );
-      const focusable = preferred ?? panelRef.current?.querySelector<HTMLElement>(FOCUSABLE);
+      const focusable =
+        preferred ?? panelRef.current?.querySelector<HTMLElement>(FOCUSABLE);
       focusable?.focus();
-    }, 80);
+    }, 60);
 
     function handleKeyDown(event: KeyboardEvent) {
       if (event.key === "Escape") {
         event.preventDefault();
-        onClose();
+        onCloseRef.current();
         return;
       }
       if (event.key !== "Tab" || !panelRef.current) return;
@@ -66,7 +63,7 @@ export function Modal({ open, onClose, title, description, children }: ModalProp
       window.removeEventListener("keydown", handleKeyDown);
       previousFocus?.focus();
     };
-  }, [onClose, open]);
+  }, [open]);
 
   const host =
     typeof document === "undefined"
@@ -81,50 +78,50 @@ export function Modal({ open, onClose, title, description, children }: ModalProp
           className="modal-layer"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          transition={{ duration: 0.18 }}
+          exit={{ opacity: 0, transition: { duration: 0.14 } }}
+          transition={{ duration: 0.16 }}
           onMouseDown={(event) => {
             if (event.target === event.currentTarget) onClose();
           }}
         >
           <motion.div
             ref={panelRef}
-            initial={{ opacity: 0, scale: 0.94, y: 14, filter: "blur(9px)" }}
-            animate={{ opacity: 1, scale: 1, y: 0, filter: "blur(0px)" }}
-            exit={{ opacity: 0, scale: 0.97, y: 8, filter: "blur(5px)" }}
+            className="modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby={titleId}
+            aria-describedby={description ? descriptionId : undefined}
+            initial={{ opacity: 0, scale: 0.94, y: 18 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{
+              opacity: 0,
+              scale: 0.97,
+              y: 8,
+              transition: { duration: 0.14, ease: "easeIn" },
+            }}
             transition={overlayTransition}
-            style={{ width: "min(408px, 100%)" }}
           >
-            <GlassCard
-              className="modal-panel"
-              role="dialog"
-              aria-modal="true"
-              aria-labelledby={titleId}
-              aria-describedby={description ? descriptionId : undefined}
-              style={{ width: "100%" }}
-            >
-              <div className="flex items-start justify-between gap-4">
-                <div>
-                  <h2 id={titleId} className="modal-title">
-                    {title}
-                  </h2>
-                  {description ? (
-                    <p id={descriptionId} className="modal-copy">
-                      {description}
-                    </p>
-                  ) : null}
-                </div>
-                <button
-                  type="button"
-                  className="icon-button shrink-0"
-                  aria-label="Close dialog"
-                  onClick={onClose}
-                >
-                  <X size={13} strokeWidth={1.8} />
-                </button>
+            <div className="modal-head">
+              <div>
+                <h2 id={titleId} className="modal-title">
+                  {title}
+                </h2>
+                {description ? (
+                  <p id={descriptionId} className="modal-copy">
+                    {description}
+                  </p>
+                ) : null}
               </div>
-              {children}
-            </GlassCard>
+              <button
+                type="button"
+                className="icon-btn shrink-0"
+                aria-label="Close dialog"
+                onClick={onClose}
+              >
+                <X size={16} strokeWidth={1.8} />
+              </button>
+            </div>
+            {children}
           </motion.div>
         </motion.div>
       ) : null}

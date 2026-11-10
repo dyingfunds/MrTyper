@@ -1,6 +1,6 @@
 [package]
 name = "mrtyper"
-version = "1.0.0"
+version = "2.0.0"
 description = "Human-paced typing into any Windows window"
 authors = ["MrTyper"]
 license = "MIT"

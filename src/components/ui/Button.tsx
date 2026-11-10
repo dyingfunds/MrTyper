@@ -1,119 +1,67 @@
-import { motion, type HTMLMotionProps } from "framer-motion";
 import type { LucideIcon } from "lucide-react";
-import type { ReactNode } from "react";
-import { springBouncy, springSnappy } from "../../lib/motion";
+import type { ButtonHTMLAttributes, ReactNode } from "react";
 import { cn } from "../../lib/utils";
 
-type Variant = "default" | "danger" | "ghost" | "confirm";
+type Variant = "default" | "primary" | "ghost" | "danger" | "danger-solid";
 
-interface GlassButtonProps extends Omit<HTMLMotionProps<"button">, "children"> {
+interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: Variant;
-  size?: "md" | "sm";
+  size?: "sm" | "md" | "lg";
   icon?: LucideIcon;
   children?: ReactNode;
 }
 
-export function GlassButton({
+export function Button({
   variant = "default",
   size = "md",
   icon: Icon,
   className,
   children,
-  disabled,
   ...props
-}: GlassButtonProps) {
+}: ButtonProps) {
   return (
-    <motion.button
+    <button
       type="button"
       className={cn(
         "btn",
-        variant === "danger" && "btn-danger",
-        variant === "ghost" && "btn-ghost",
-        variant === "confirm" && "btn-confirm",
+        variant !== "default" && `btn-${variant}`,
         size === "sm" && "btn-sm",
+        size === "lg" && "btn-lg",
         className,
       )}
-      whileHover={disabled ? undefined : { y: -1 }}
-      whileTap={disabled ? undefined : { scale: 0.97, y: 0 }}
-      transition={springSnappy}
-      disabled={disabled}
       {...props}
     >
-      {Icon ? <Icon size={size === "sm" ? 12 : 13} strokeWidth={1.8} /> : null}
+      {Icon ? <Icon size={size === "sm" ? 13 : 15} strokeWidth={2} /> : null}
       {children}
-    </motion.button>
+    </button>
   );
 }
 
-interface IconButtonProps extends Omit<HTMLMotionProps<"button">, "children"> {
+interface IconButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   label: string;
-  children?: ReactNode;
   tone?: "default" | "danger";
+  tipSide?: "top" | "bottom";
+  children?: ReactNode;
 }
 
 export function IconButton({
   label,
-  children,
-  className,
   tone = "default",
+  tipSide = "bottom",
+  className,
+  children,
   ...props
 }: IconButtonProps) {
   return (
-    <motion.button
+    <button
       type="button"
       aria-label={label}
-      title={label}
-      className={cn("icon-button", className)}
-      whileHover={{ y: -1 }}
-      whileTap={{ scale: 0.92 }}
-      transition={springSnappy}
-      style={tone === "danger" ? { color: undefined } : undefined}
+      data-tip={label}
+      data-tip-side={tipSide}
+      className={cn("icon-btn", tone === "danger" && "is-danger", className)}
       {...props}
     >
       {children}
-    </motion.button>
-  );
-}
-
-interface StartButtonProps {
-  onClick: () => void;
-  disabled?: boolean;
-  mode: "start" | "stop";
-  label: string;
-  icon: React.ReactNode;
-}
-
-export function StartButton({
-  onClick,
-  disabled,
-  mode,
-  label,
-  icon,
-}: StartButtonProps) {
-  return (
-    <div className="btn-start-wrap">
-      <motion.div
-        className="btn-start-aura"
-        aria-hidden="true"
-        animate={{ opacity: [0.4, 0.65, 0.4], scale: [0.98, 1.03, 0.98] }}
-        transition={{ duration: 5.2, repeat: Infinity, ease: "easeInOut" }}
-      />
-      <motion.button
-        type="button"
-        className={cn("btn-start", mode === "stop" && "is-stop")}
-        disabled={disabled}
-        onClick={onClick}
-        whileHover={disabled ? undefined : { scale: 1.012 }}
-        whileTap={
-          disabled
-            ? undefined
-            : { scaleX: 1.025, scaleY: 0.94, transition: springBouncy }
-        }
-        transition={springSnappy}
-      >
-        <span className="btn-start-icon">{icon}</span>
-        <span>{label}</span>
-      </motion.button>
-    </div>
+    </button>
   );
 }

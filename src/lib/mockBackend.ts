@@ -19,7 +19,7 @@ import {
 
 const STORAGE_KEY = "mrtyper.browser-preview.v1";
 const DEMO_TEXT =
-  "Meet MrTyper — a small, deliberate typing companion.\n\nPaste a script, choose a rhythm, and let it write itself into whatever window you choose. It understands café accents, 日本語, and even ✨ emoji.\n\nEvery pause, stumble, and burst is yours to tune.";
+  "Meet MrTyper, a small and deliberate typing instrument.\n\nPaste a script, set a tempo, and let it write itself into whatever window you focus. It handles café accents, 日本語, and even ✨ emoji.\n\nEvery pause, stumble, and burst is yours to tune.";
 
 interface StoredState {
   settings: AppSettings;
@@ -39,6 +39,7 @@ interface MockRun {
   startedAt: number | null;
   paused: boolean;
   cancelled: boolean;
+  typoPending: boolean;
   timer: ReturnType<typeof setTimeout> | null;
 }
 
@@ -150,6 +151,7 @@ class MockBackend {
       startedAt: null,
       paused: false,
       cancelled: false,
+      typoPending: false,
       timer: null,
     };
     this.run = run;
@@ -330,6 +332,33 @@ class MockBackend {
       return;
     }
 
+    // Mirror the native engine: a wrong key, a beat, a backspace, then the fix.
+    const typing = run.settings.typing;
+    if (
+      !run.typoPending &&
+      typing.typosEnabled &&
+      /[a-z]/i.test(char) &&
+      Math.random() < typing.typoChance / 100
+    ) {
+      run.typoPending = true;
+      this.emit("typing-keystroke", {
+        runId: run.runId,
+        index: run.index + 1,
+        kind: "typo",
+      });
+      run.timer = setTimeout(() => {
+        if (this.run !== run || run.cancelled) return;
+        this.emit("typing-keystroke", {
+          runId: run.runId,
+          index: run.index + 1,
+          kind: "correction",
+        });
+        this.scheduleNext(run, 90 + Math.random() * 120);
+      }, 150 + Math.random() * 170);
+      return;
+    }
+    run.typoPending = false;
+
     run.index += 1;
     const now = performance.now();
     const elapsedMs = run.startedAt === null ? 0 : now - run.startedAt;
@@ -393,10 +422,6 @@ class MockBackend {
     ) {
       delay += 300 + Math.random() * (typing.thinkingPauseMaxMs - 300);
     }
-    if (typing.typosEnabled && Math.random() < typing.typoChance / 100) {
-      delay += 110 + Math.random() * 140;
-    }
-
     return delay;
   }
 

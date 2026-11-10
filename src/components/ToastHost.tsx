@@ -1,14 +1,9 @@
 import { AnimatePresence, motion } from "framer-motion";
-import {
-  AlertCircle,
-  AlertTriangle,
-  Check,
-  Info,
-  X,
-} from "lucide-react";
-import type { ToastMessage } from "../types";
+import { AlertTriangle, CheckCircle2, Info, X, XCircle } from "lucide-react";
+import { memo } from "react";
 import { springSnappy } from "../lib/motion";
 import { cn } from "../lib/utils";
+import type { ToastMessage } from "../types";
 
 interface ToastHostProps {
   toasts: ToastMessage[];
@@ -16,12 +11,12 @@ interface ToastHostProps {
 }
 
 function ToastIcon({ kind }: { kind: ToastMessage["kind"] }) {
-  const props = { size: 12, strokeWidth: 2 };
+  const props = { size: 16, strokeWidth: 2 };
   switch (kind) {
     case "success":
-      return <Check {...props} />;
+      return <CheckCircle2 {...props} />;
     case "error":
-      return <AlertCircle {...props} />;
+      return <XCircle {...props} />;
     case "warning":
       return <AlertTriangle {...props} />;
     default:
@@ -29,19 +24,27 @@ function ToastIcon({ kind }: { kind: ToastMessage["kind"] }) {
   }
 }
 
-export function ToastHost({ toasts, onDismiss }: ToastHostProps) {
+export const ToastHost = memo(function ToastHost({
+  toasts,
+  onDismiss,
+}: ToastHostProps) {
   return (
     <div className="toast-host" aria-live="polite" aria-atomic="false">
-      <AnimatePresence initial={false}>
+      <AnimatePresence initial={false} mode="popLayout">
         {toasts.map((toast) => (
           <motion.div
             key={toast.id}
             layout
             className={cn("toast", `is-${toast.kind}`)}
             role={toast.kind === "error" ? "alert" : "status"}
-            initial={{ opacity: 0, y: 18, scale: 0.94, filter: "blur(8px)" }}
-            animate={{ opacity: 1, y: 0, scale: 1, filter: "blur(0px)" }}
-            exit={{ opacity: 0, y: 8, scale: 0.97, filter: "blur(6px)" }}
+            initial={{ opacity: 0, x: 48, scale: 0.96 }}
+            animate={{ opacity: 1, x: 0, scale: 1 }}
+            exit={{
+              opacity: 0,
+              x: 32,
+              scale: 0.96,
+              transition: { duration: 0.16, ease: "easeIn" },
+            }}
             transition={springSnappy}
           >
             <span className="toast-icon">
@@ -57,12 +60,12 @@ export function ToastHost({ toasts, onDismiss }: ToastHostProps) {
               aria-label="Dismiss notification"
               onClick={() => onDismiss(toast.id)}
             >
-              <X size={10} strokeWidth={2} />
+              <X size={13} strokeWidth={2} />
             </button>
-            <span className="toast-progress" aria-hidden="true" />
+            <span className="toast-timer" aria-hidden="true" />
           </motion.div>
         ))}
       </AnimatePresence>
     </div>
   );
-}
+});

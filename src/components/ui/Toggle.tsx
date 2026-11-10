@@ -1,5 +1,4 @@
-import { motion } from "framer-motion";
-import { springSnappy } from "../../lib/motion";
+import { memo } from "react";
 
 interface ToggleProps {
   checked: boolean;
@@ -8,25 +7,24 @@ interface ToggleProps {
   disabled?: boolean;
 }
 
-export function Toggle({ checked, onChange, label, disabled }: ToggleProps) {
+/** A hardware-style switch. All motion is CSS so toggling costs no extra render. */
+export const Toggle = memo(function Toggle({
+  checked,
+  onChange,
+  label,
+  disabled,
+}: ToggleProps) {
   return (
-    <motion.button
+    <button
       type="button"
       role="switch"
       aria-checked={checked}
       aria-label={label}
-      title={label}
-      className="toggle"
+      className="switch"
       disabled={disabled}
       onClick={() => onChange(!checked)}
-      whileTap={disabled ? undefined : { scale: 0.94 }}
-      transition={springSnappy}
     >
-      <motion.span
-        className="toggle-knob"
-        animate={{ x: checked ? 14 : 0 }}
-        transition={springSnappy}
-      />
-    </motion.button>
+      <span className="switch-knob" />
+    </button>
   );
-}
+});

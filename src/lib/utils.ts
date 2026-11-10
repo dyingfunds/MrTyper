@@ -8,8 +8,25 @@ export function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
 
+/** Mirror the engine: every line ending becomes a single newline. */
+export function normalizeScript(text: string): string {
+  return text.includes("\r") ? text.replace(/\r\n?/g, "\n") : text;
+}
+
+/** Counts Unicode code points, the unit the engine types in. */
 export function characterCount(text: string): number {
-  return Array.from(text).length;
+  let count = text.length;
+  for (let index = 0; index < text.length - 1; index += 1) {
+    const unit = text.charCodeAt(index);
+    if (unit >= 0xd800 && unit <= 0xdbff) {
+      const next = text.charCodeAt(index + 1);
+      if (next >= 0xdc00 && next <= 0xdfff) {
+        count -= 1;
+        index += 1;
+      }
+    }
+  }
+  return count;
 }
 
 export function wordCount(text: string): number {

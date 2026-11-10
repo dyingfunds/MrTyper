@@ -3,23 +3,16 @@ import {
   ArrowUpRight,
   BookmarkPlus,
   Check,
-  Layers3,
   Pencil,
-  Plus,
-  Sparkles,
+  SlidersHorizontal,
   Trash2,
 } from "lucide-react";
-import { useEffect, useState } from "react";
-import { GlassCard } from "../components/GlassCard";
+import { memo, useEffect, useMemo, useState, type CSSProperties } from "react";
 import { Modal } from "../components/Modal";
-import { GlassButton, IconButton } from "../components/ui/Button";
+import { Button, IconButton } from "../components/ui/Button";
+import { simulateCadence } from "../lib/cadence";
 import { springSoft } from "../lib/motion";
-import {
-  cn,
-  formatDuration,
-  presetTraits,
-  relativeTime,
-} from "../lib/utils";
+import { cn, formatDuration, presetTraits, relativeTime } from "../lib/utils";
 import type { AppSettings, Preset } from "../types";
 
 type Notify = (
@@ -45,19 +38,131 @@ type Dialog =
   | { type: "delete"; preset: Preset }
   | null;
 
-function barHeights(seed: string): number[] {
+const VIZ_BARS = 46;
+
+function seedFrom(text: string): number {
   let hash = 2166136261;
-  for (let index = 0; index < seed.length; index += 1) {
-    hash ^= seed.charCodeAt(index);
+  for (let index = 0; index < text.length; index += 1) {
+    hash ^= text.charCodeAt(index);
     hash = Math.imul(hash, 16777619);
   }
-  return Array.from({ length: 32 }, (_, index) => {
-    const mixed = Math.abs(Math.sin(hash + index * 1.73)) * 100;
-    return 9 + (mixed % 34);
-  });
+  return hash >>> 0;
 }
 
-export function PresetsPage({
+interface PresetCardProps {
+  preset: Preset;
+  active: boolean;
+  index: number;
+  onLoad: (preset: Preset) => void;
+  onRename: (preset: Preset) => void;
+  onDelete: (preset: Preset) => void;
+}
+
+const PresetCard = memo(function PresetCard({
+  preset,
+  active,
+  index,
+  onLoad,
+  onRename,
+  onDelete,
+}: PresetCardProps) {
+  // The picture is the preset: a real sketch of the rhythm it will produce.
+  const bars = useMemo(
+    () => simulateCadence(preset.typing, VIZ_BARS, seedFrom(preset.id)),
+    [preset.id, preset.typing],
+  );
+  const traits = presetTraits(preset.typing);
+
+  return (
+    <motion.div
+      layout
+      initial={{ opacity: 0, y: 18 }}
+      animate={{
+        opacity: 1,
+        y: 0,
+        transition: { ...springSoft, delay: Math.min(index, 8) * 0.045 },
+      }}
+      exit={{ opacity: 0, scale: 0.94, transition: { duration: 0.16 } }}
+      transition={springSoft}
+    >
+      <article className={cn("preset-card", active && "is-active")}>
+        <div className="preset-viz" aria-hidden="true">
+          {bars.map((bar, barIndex) => (
+            <i
+              key={barIndex}
+              className={
+                bar.kind === "typo" ? "is-typo" : bar.kind === "pause" ? "is-pause" : undefined
+              }
+              style={{ "--h": bar.level.toFixed(3), "--i": barIndex } as CSSProperties}
+            />
+          ))}
+          {active ? (
+            <span className="tag tag-accent preset-flag">
+              <Check size={11} strokeWidth={2.4} />
+              Active
+            </span>
+          ) : null}
+        </div>
+
+        <div className="preset-body">
+          <div>
+            <h2 className="preset-name" title={preset.name}>
+              {preset.name}
+            </h2>
+            <p className="preset-meta">
+              {formatDuration(preset.typing.startDelaySecs)} head start · updated{" "}
+              {relativeTime(preset.updatedAt)}
+            </p>
+          </div>
+          <div className="preset-speed">
+            <strong>
+              {preset.typing.minWpm}–{preset.typing.maxWpm}
+            </strong>
+            <span>wpm</span>
+          </div>
+          <div className="preset-tags">
+            {traits.map((trait) => (
+              <span className="tag" key={trait}>
+                {trait}
+              </span>
+            ))}
+            <span className="tag">{preset.typing.randomness}% random</span>
+          </div>
+        </div>
+
+        <div className="preset-foot">
+          <Button
+            size="sm"
+            className="preset-load"
+            icon={ArrowUpRight}
+            onClick={() => onLoad(preset)}
+          >
+            {active ? "Loaded" : "Load preset"}
+          </Button>
+          <IconButton
+            label="Rename"
+            tipSide="top"
+            aria-label={`Rename ${preset.name}`}
+            onClick={() => onRename(preset)}
+          >
+            <Pencil size={14} strokeWidth={1.8} />
+          </IconButton>
+          <IconButton
+            label="Delete"
+            tipSide="top"
+            tone="danger"
+            aria-label={`Delete ${preset.name}`}
+            onClick={() => onDelete(preset)}
+          >
+            <Trash2 size={14} strokeWidth={1.8} />
+          </IconButton>
+        </div>
+      </article>
+    </motion.div>
+  );
+});
+
+export const PresetsPage = memo(function PresetsPage({
   presets,
   settings,
   onSavePreset,
@@ -77,7 +182,19 @@ export function PresetsPage({
     setBusy(false);
   }, [dialog]);
 
-  const currentSignature = JSON.stringify(settings.typing);
+  const currentSignature = useMemo(
+    () => JSON.stringify(settings.typing),
+    [settings.typing],
+  );
+
+  const openRename = useMemo(
+    () => (preset: Preset) => setDialog({ type: "rename", preset }),
+    [],
+  );
+  const openDelete = useMemo(
+    () => (preset: Preset) => setDialog({ type: "delete", preset }),
+    [],
+  );
 
   async function submitSave() {
     const trimmed = name.trim();
@@ -112,275 +229,199 @@ export function PresetsPage({
     if (ok) setDialog(null);
   }
 
-  function submitDialog() {
-    if (!dialog) return;
-    if (dialog.type === "save") void submitSave();
-    if (dialog.type === "rename") void submitRename();
-    if (dialog.type === "delete") void submitDelete();
-  }
+  const typing = settings.typing;
 
   return (
-    <div className="page" id="panel-presets" role="tabpanel" aria-label="Presets">
-      <div className="page-heading">
-        <div className="page-heading-copy">
-          <span className="eyebrow">Your repertoire</span>
-          <h1 className="page-title">A voice for every occasion.</h1>
-          <p className="page-subtitle">
-            Save the pacing, pauses, and little imperfections you like. Load a
-            preset whenever the room calls for a different energy.
-          </p>
-        </div>
-        <div className="heading-badges">
-          <span className="stat-pill">
-            <Layers3 size={11} strokeWidth={1.8} />
-            {presets.length} saved
-          </span>
-          <GlassButton
-            variant="confirm"
-            icon={BookmarkPlus}
-            onClick={() => setDialog({ type: "save" })}
-          >
-            Save current
-          </GlassButton>
-        </div>
-      </div>
-
-      {presets.length === 0 ? (
-        <GlassCard>
-          <div className="empty-state">
-            <span className="empty-icon">
-              <Layers3 size={23} strokeWidth={1.3} />
+    <div className="page-scroll" id="panel-presets" role="tabpanel" aria-label="Presets">
+      <div className="page-inner">
+        <header className="page-head rise">
+          <div>
+            <span className="page-kicker label">
+              {presets.length} {presets.length === 1 ? "preset" : "presets"} saved
             </span>
-            <h2 className="section-title">No presets on the shelf yet.</h2>
-            <p className="section-hint mt-2 max-w-[320px]">
-              Save the current rhythm as your first preset. You can rename it,
-              tweak it, and keep a whole collection of voices.
+            <h1 className="page-title">A rhythm for every room.</h1>
+            <p className="page-sub">
+              Each card is drawn from the preset itself: bar height is speed,
+              gaps are pauses, red marks are typos. Load one and it takes over
+              the deck.
             </p>
-            <div className="mt-5 flex gap-2">
-              <GlassButton
-                variant="confirm"
-                icon={Plus}
+          </div>
+          <div className="page-head-actions">
+            <Button
+              variant="primary"
+              size="lg"
+              icon={BookmarkPlus}
+              onClick={() => setDialog({ type: "save" })}
+            >
+              Save current rhythm
+            </Button>
+          </div>
+        </header>
+
+        {presets.length === 0 ? (
+          <div className="empty rise" style={{ "--i": 1 } as CSSProperties}>
+            <h2 className="empty-title">Nothing saved yet.</h2>
+            <p className="empty-copy">
+              Dial in a rhythm on the Type tab, then save it here. You can keep
+              as many voices as you like and switch between them in one click.
+            </p>
+            <div className="empty-actions">
+              <Button
+                variant="primary"
+                icon={BookmarkPlus}
                 onClick={() => setDialog({ type: "save" })}
               >
-                Save current
-              </GlassButton>
-              <GlassButton icon={Sparkles} onClick={onStartFresh}>
-                Build a new one
-              </GlassButton>
+                Save current rhythm
+              </Button>
+              <Button icon={SlidersHorizontal} onClick={onStartFresh}>
+                Back to the deck
+              </Button>
             </div>
           </div>
-        </GlassCard>
-      ) : (
-        <motion.div layout className="preset-grid">
-          <AnimatePresence initial={false}>
-            {presets.map((preset) => {
-              const isCurrent = JSON.stringify(preset.typing) === currentSignature;
-              const heights = barHeights(preset.id + preset.name);
-              const traits = presetTraits(preset.typing);
-              return (
-                <motion.div
+        ) : (
+          <div className="preset-grid">
+            <AnimatePresence>
+              {presets.map((preset, index) => (
+                <PresetCard
                   key={preset.id}
-                  layout
-                  initial={{ opacity: 0, y: 14, scale: 0.98 }}
-                  animate={{ opacity: 1, y: 0, scale: 1 }}
-                  exit={{ opacity: 0, scale: 0.95, filter: "blur(6px)" }}
-                  transition={springSoft}
-                >
-                  <GlassCard className="card-pad preset-card">
-                    <div className="preset-art">
-                      <div className="preset-wave" aria-hidden="true">
-                        {heights.map((height, index) => (
-                          <span
-                            key={index}
-                            style={{ height, opacity: 0.3 + (height / 60) }}
-                          />
-                        ))}
-                      </div>
-                      <span className="preset-wpm">
-                        {preset.typing.minWpm}–{preset.typing.maxWpm} WPM
-                      </span>
-                    </div>
+                  preset={preset}
+                  index={index}
+                  active={JSON.stringify(preset.typing) === currentSignature}
+                  onLoad={onLoadPreset}
+                  onRename={openRename}
+                  onDelete={openDelete}
+                />
+              ))}
+            </AnimatePresence>
+          </div>
+        )}
 
-                    <div className="preset-card-header">
-                      <div className="min-w-0">
-                        <h2 className="preset-name">{preset.name}</h2>
-                        <p className="preset-meta">
-                          {formatDuration(preset.typing.startDelaySecs)} head
-                          start · updated {relativeTime(preset.updatedAt)}
-                        </p>
-                      </div>
-                      {isCurrent ? (
-                        <span className="preset-current">
-                          <Check size={8} strokeWidth={2} className="mr-1" />
-                          Current
-                        </span>
-                      ) : null}
-                    </div>
-
-                    <div className="preset-traits">
-                      {traits.map((trait) => (
-                        <span className="preset-trait" key={trait}>
-                          {trait}
-                        </span>
-                      ))}
-                      <span className="preset-trait">
-                        {preset.typing.randomness}% random
-                      </span>
-                    </div>
-
-                    <div className="preset-footer">
-                      <GlassButton
-                        size="sm"
-                        icon={ArrowUpRight}
-                        onClick={() => onLoadPreset(preset)}
-                      >
-                        Use preset
-                      </GlassButton>
-                      <div className="preset-actions">
-                        <IconButton
-                          label={`Rename ${preset.name}`}
-                          onClick={() => setDialog({ type: "rename", preset })}
-                        >
-                          <Pencil size={12} strokeWidth={1.7} />
-                        </IconButton>
-                        <IconButton
-                          label={`Delete ${preset.name}`}
-                          onClick={() => setDialog({ type: "delete", preset })}
-                        >
-                          <Trash2 size={12} strokeWidth={1.7} />
-                        </IconButton>
-                      </div>
-                    </div>
-                  </GlassCard>
-                </motion.div>
-              );
-            })}
-          </AnimatePresence>
-        </motion.div>
-      )}
-
-      <p className="mt-5 px-1 text-[9px] leading-relaxed text-[var(--text-faint)]">
-        Presets save your performance settings — cadence, human texture, and head
-        start. Appearance and shortcuts stay just the way you set them.
-      </p>
+        <p className="page-note">
+          Presets store the performance only: tempo, head start, and every
+          humanize setting. Theme, shortcuts, and safety stay as you set them.
+        </p>
+      </div>
 
       <Modal
         open={dialog?.type === "save"}
         onClose={() => setDialog(null)}
         title="Save this rhythm."
-        description="Give this performance a name. You can load or revise it at any time."
+        description="Give the current deck settings a name. You can load, rename, or delete it later."
       >
-        <label className="modal-field">
-          <span className="field-label">Preset name</span>
-          <input
-            className="text-field"
-            value={name}
-            autoFocus
-            maxLength={42}
-            placeholder="e.g. Late-night reply"
-            onChange={(event) => setName(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === "Enter") {
-                event.preventDefault();
-                void submitSave();
-              }
-            }}
-          />
-        </label>
-        <div className="modal-preview">
-          <div className="modal-preview-stat">
-            <strong>
-              {settings.typing.minWpm}–{settings.typing.maxWpm}
-            </strong>
-            <span>WPM</span>
-          </div>
-          <div className="modal-preview-stat">
-            <strong>{settings.typing.randomness}%</strong>
-            <span>Random</span>
-          </div>
-          <div className="modal-preview-stat">
-            <strong>{settings.typing.typoChance.toFixed(1)}%</strong>
-            <span>Typos</span>
-          </div>
-          <div className="modal-preview-stat">
-            <strong>{settings.typing.startDelaySecs}s</strong>
-            <span>Delay</span>
+        <div className="modal-body">
+          <label className="field">
+            <span className="label">Preset name</span>
+            <input
+              className="text-field"
+              value={name}
+              maxLength={42}
+              placeholder="e.g. Late-night reply"
+              onChange={(event) => setName(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  event.preventDefault();
+                  void submitSave();
+                }
+              }}
+            />
+          </label>
+          <div className="modal-stats">
+            <div className="modal-stat">
+              <span className="label">WPM</span>
+              <strong>
+                {typing.minWpm}–{typing.maxWpm}
+              </strong>
+            </div>
+            <div className="modal-stat">
+              <span className="label">Random</span>
+              <strong>{typing.randomness}%</strong>
+            </div>
+            <div className="modal-stat">
+              <span className="label">Typos</span>
+              <strong>
+                {typing.typosEnabled ? `${typing.typoChance.toFixed(1)}%` : "off"}
+              </strong>
+            </div>
+            <div className="modal-stat">
+              <span className="label">Delay</span>
+              <strong>{typing.startDelaySecs}s</strong>
+            </div>
           </div>
         </div>
         <div className="modal-actions">
-          <GlassButton onClick={() => setDialog(null)} disabled={busy}>
+          <Button onClick={() => setDialog(null)} disabled={busy}>
             Cancel
-          </GlassButton>
-          <GlassButton
-            variant="confirm"
+          </Button>
+          <Button
+            variant="primary"
             onClick={() => void submitSave()}
             disabled={busy || !name.trim()}
           >
             {busy ? "Saving…" : "Save preset"}
-          </GlassButton>
+          </Button>
         </div>
       </Modal>
 
       <Modal
         open={dialog?.type === "rename"}
         onClose={() => setDialog(null)}
-        title="Rename this preset."
-        description="A new name, same cadence."
+        title="Rename preset."
+        description="A new name, the same rhythm."
       >
-        <label className="modal-field">
-          <span className="field-label">Preset name</span>
-          <input
-            className="text-field"
-            value={name}
-            autoFocus
-            maxLength={42}
-            onChange={(event) => setName(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === "Enter") {
-                event.preventDefault();
-                void submitRename();
-              }
-            }}
-          />
-        </label>
+        <div className="modal-body">
+          <label className="field">
+            <span className="label">Preset name</span>
+            <input
+              className="text-field"
+              value={name}
+              maxLength={42}
+              onChange={(event) => setName(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  event.preventDefault();
+                  void submitRename();
+                }
+              }}
+            />
+          </label>
+        </div>
         <div className="modal-actions">
-          <GlassButton onClick={() => setDialog(null)} disabled={busy}>
+          <Button onClick={() => setDialog(null)} disabled={busy}>
             Cancel
-          </GlassButton>
-          <GlassButton
-            variant="confirm"
+          </Button>
+          <Button
+            variant="primary"
             onClick={() => void submitRename()}
             disabled={busy || !name.trim()}
           >
             {busy ? "Saving…" : "Rename"}
-          </GlassButton>
+          </Button>
         </div>
       </Modal>
 
       <Modal
         open={dialog?.type === "delete"}
         onClose={() => setDialog(null)}
-        title="Remove this preset?"
+        title="Delete this preset?"
         description={
           dialog?.type === "delete"
-            ? `“${dialog.preset.name}” will be removed from this device. Your current session settings are untouched.`
+            ? `“${dialog.preset.name}” will be removed from this device. Your current deck settings are not affected.`
             : undefined
         }
       >
         <div className="modal-actions">
-          <GlassButton onClick={() => setDialog(null)} disabled={busy}>
+          <Button onClick={() => setDialog(null)} disabled={busy}>
             Keep it
-          </GlassButton>
-          <GlassButton
-            variant="confirm"
-            className="is-delete"
+          </Button>
+          <Button
+            variant="danger-solid"
             onClick={() => void submitDelete()}
             disabled={busy}
           >
-            {busy ? "Removing…" : "Delete preset"}
-          </GlassButton>
+            {busy ? "Deleting…" : "Delete preset"}
+          </Button>
         </div>
       </Modal>
     </div>
   );
-}
+});

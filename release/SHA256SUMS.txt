@@ -1,1 +1,1 @@
-SHA256  f8cb02a053d067bcc3fbdc19ad3a04ccd783f2a8afff61ef75a12e666fa933bb  MrTyper_1.0.0_x64-setup.exe
+SHA256  eefedd9c4d1bcffafdd7041b1db96e76990e3a978e1a39107a1c3776a9275e9e  MrTyper_2.0.0_x64-setup.exe

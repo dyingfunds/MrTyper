@@ -1,6 +1,6 @@
 # MrTyper
 
-**A human-paced typing companion for Windows.** Paste a script, tune the rhythm, and let MrTyper type it into whatever window you focus — with deliberate pauses, occasional corrections, and a softly glowing glass interface.
+**A human-paced typing companion for Windows.** Paste a script, set a tempo, and let MrTyper type it into whatever window you focus — with deliberate pauses, occasional corrections, and a live view of every keystroke as it lands.
 
 ![MrTyper Type screen in dark mode](docs/preview-type-dark.png)
 
@@ -23,13 +23,16 @@ Everything lives on your machine. There are no accounts, analytics, network call
 - **Human cadence.** A dual-handle WPM range (10–300), keystroke randomness, punctuation and line-break pauses, thinking pauses, burst typing, QWERTY typo-and-correct behavior, and optional fatigue drift.
 - **Head start.** A 1–30 second animated countdown lets you click into the target application.
 - **Global controls.** Start/stop and pause/resume hotkeys work while MrTyper is in the background. Both are rebindable.
-- **Live telemetry.** Spring-smoothed effective WPM, characters delivered, elapsed time, ETA, a shimmering progress bar, and a key-tap ripple.
+- **Live stage.** While a session runs, the script inks in character by character behind a glowing caret that flashes red on typos. A tachometer needle follows the real effective WPM, and a cadence scope records every keystroke, typo, and correction.
+- **See the rhythm before you run it.** The cadence scope previews what your current settings will sound like, and every preset card is drawn from its own settings.
 - **Safety net.** Global <kbd>Esc</kbd> kills injection instantly. MrTyper can also stop automatically when focus leaves the target window.
 - **Presets.** Save, load, rename, and delete named performance profiles. Three starter profiles are included: *Fast & clean*, *Careful*, and *Sloppy*.
 - **Persistent and private.** Text, settings, presets, and window position are stored in one local JSON file.
 - **Tray resident.** Closing the window hides it to the system tray, where quick start/stop and pause actions remain available.
-- **Liquid glass UI.** Frameless 24px window, Mica/Acrylic backdrop, cursor-following specular light, spring physics, shared-layout tabs, and system light/dark themes.
-- **Reduced motion aware.** MrTyper follows Windows' "Reduce motion" preference.
+- **An instrument, not a form.** Frameless window, matte graphite surfaces, one loud accent colour (Volt, Ember, Ice, or Orchid), dark and light themes, hardware-style faders, and spring-driven motion.
+- **Motion you control.** Animation follows the Windows "Animation effects" switch by default; **Setup → Motion** can force it fully on or keep it to simple fades.
+- **Fast by design.** Keystroke events bypass React and are drawn straight to a canvas, progress updates are capped at one per frame, and decorative animation pauses while the window sits in the tray.
+- **Keyboard first.** <kbd>Ctrl</kbd>+<kbd>1</kbd>/<kbd>2</kbd>/<kbd>3</kbd> switch tabs; drop a text file onto the stage to load it.
 
 ## Stack
 
@@ -37,7 +40,8 @@ Everything lives on your machine. There are no accounts, analytics, network call
 | --- | --- |
 | Shell | [Tauri 2](https://v2.tauri.app/) |
 | UI | React 19 + TypeScript + Tailwind CSS 4 |
-| Motion | Framer Motion (spring physics) |
+| Motion | CSS transitions + Framer Motion for layout and presence |
+| Type | Geist, Geist Mono, Bricolage Grotesque (bundled, no network) |
 | Native engine | Rust, one dedicated worker thread per session |
 | Keystrokes | Win32 `SendInput` with `KEYEVENTF_UNICODE` |
 | Global keys | `tauri-plugin-global-shortcut` |
@@ -49,8 +53,9 @@ Everything lives on your machine. There are no accounts, analytics, network call
 ```
 src/                       React application
   pages/                   Type, Presets, Settings
-  components/              Glass primitives, title bar, sliders, toasts, countdown
-  lib/                     Tauri bridge + browser preview + helpers
+  components/              Title bar, rail, tachometer, cadence scope, live script, faders, overlays
+  styles/                  Design tokens and stylesheets
+  lib/                     Tauri bridge, browser preview, cadence model, keystroke bus, helpers
 src-tauri/
   src/engine.rs            Typing planner, worker loop, event streaming, tests
   src/input.rs             SendInput + foreground-window detection
@@ -61,8 +66,8 @@ src-tauri/
   src/commands.rs          Tauri command surface
   src/lib.rs               App setup and window lifecycle
   icons/                   Generated app icon set
-public/logo.svg            Glass mark used in-app
-scripts/generate_icons.py  Rebuilds icon sizes from icon.png
+public/logo.svg            App mark (an M whose last stroke is a text cursor)
+scripts/generate_icons.py  Rebuilds icon sizes from icon.png (render it first with `pnpm tauri icon public/logo.svg`)
 scripts/generate_installer_art.py  Rebuilds branded NSIS bitmaps
 docs/                      README screenshots
 release/                   Prebuilt Windows installer + checksum
@@ -91,7 +96,7 @@ For UI-only work, run `pnpm dev` in a browser. The app automatically uses a loca
 
 A self-contained Windows x64 installer is included in the repository:
 
-**[release/MrTyper_1.0.0_x64-setup.exe](release/MrTyper_1.0.0_x64-setup.exe)**
+**[release/MrTyper_2.0.0_x64-setup.exe](release/MrTyper_2.0.0_x64-setup.exe)**
 
 1. Verify the file against [release/SHA256SUMS.txt](release/SHA256SUMS.txt).
 2. Double-click the setup and approve Windows SmartScreen if you trust the build.
@@ -107,10 +112,12 @@ The installer can bootstrap the WebView2 runtime if it is missing; that is the o
 pnpm tauri:build
 ```
 
+This runs [scripts/build-release.mjs](scripts/build-release.mjs), which wraps `tauri build` and remaps the source paths Rust embeds in the binary (your Cargo, rustup and project folders) to neutral prefixes, so the release never carries your user name or folder layout.
+
 Two useful artifacts are produced:
 
 - `src-tauri/target/release/mrtyper.exe` — the standalone app.
-- `src-tauri/target/release/bundle/nsis/MrTyper_1.0.0_x64-setup.exe` — the single NSIS installer.
+- `src-tauri/target/release/bundle/nsis/MrTyper_2.0.0_x64-setup.exe` — the single NSIS installer.
 
 The installer is configured for a per-user install (`currentUser`) and does not require a separate runtime installer. If WebView2 is missing, Tauri's silent bootstrapper downloads it during installation. The binary is unsigned by default; Windows SmartScreen or antivirus heuristics may warn about or quarantine the NSIS installer. The application is built entirely from the source in this repository and makes no network requests at runtime. For distribution, sign the executable and installer with a code-signing certificate.
 
@@ -123,7 +130,7 @@ python scripts/generate_icons.py
 python scripts/generate_installer_art.py
 ```
 
-The first script regenerates the PNG sizes and multi-resolution `.ico` used by the installer, executable, and tray. The second rebuilds the branded NSIS header and welcome-sidebar images from the same glass artwork.
+The first script regenerates the PNG sizes and multi-resolution `.ico` used by the installer, executable, and tray. The second rebuilds the branded NSIS header and welcome-sidebar images in the app's graphite-and-accent style.
 
 ## Using MrTyper
 
@@ -163,7 +170,7 @@ Close the setup with **Abort**, then launch it with normal rights:
 
 For a setup built from source, the relevant path is `src-tauri\target\release\bundle\nsis\`.
 
-If the installer was previously running, make sure it has fully closed first (check Task Manager for `MrTyper_1.0.0_x64-setup`).
+If the installer was previously running, make sure it has fully closed first (check Task Manager for `MrTyper_2.0.0_x64-setup`).
 
 ## Configuration and privacy
 

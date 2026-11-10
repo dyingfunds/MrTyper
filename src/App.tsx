@@ -1,9 +1,15 @@
-import { AnimatePresence, MotionConfig, motion, useReducedMotion } from "framer-motion";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AmbientBackground } from "./components/AmbientBackground";
+import { AnimatePresence, MotionConfig, motion } from "framer-motion";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+} from "react";
 import { CountdownOverlay } from "./components/CountdownOverlay";
-import { Keycap } from "./components/ui/Keycap";
-import { Tabs } from "./components/Tabs";
+import { Logo } from "./components/Logo";
+import { Rail, TAB_ORDER } from "./components/Rail";
 import { TitleBar } from "./components/TitleBar";
 import { ToastHost } from "./components/ToastHost";
 import {
@@ -39,12 +45,20 @@ import {
   makeDefaultPresets,
   normalizeSettings,
 } from "./lib/defaults";
-import { pageTransition, springSoft } from "./lib/motion";
+import { liveBus } from "./lib/liveBus";
+import { pageEnter, pageExit, springSoft } from "./lib/motion";
 import {
-  characterCount,
-  formatHotkey,
-  formatWpm,
-} from "./lib/utils";
+  REDUCED_MOTION_QUERY,
+  applyAccent,
+  applyReducedMotion,
+  loadUiPrefs,
+  saveUiPrefs,
+  shouldReduceMotion,
+  type Accent,
+  type MotionPref,
+  type UiPrefs,
+} from "./lib/uiPrefs";
+import { characterCount, formatWpm } from "./lib/utils";
 import { PresetsPage } from "./pages/PresetsPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { TypePage } from "./pages/TypePage";
@@ -54,6 +68,8 @@ import type {
   FinishReason,
   LiveEngineState,
   Preset,
+  ProgressPayload,
+  ResolvedTheme,
   SessionSummary,
   TabId,
   ToastMessage,
@@ -70,7 +86,6 @@ const EMPTY_ENGINE: LiveEngineState = {
   etaSecs: null,
   elapsedMs: 0,
   runId: null,
-  strokes: 0,
 };
 
 type Notify = (
@@ -94,17 +109,34 @@ const TOAST_TITLES: Record<ToastPayload["kind"], string> = {
   error: "Something went wrong",
 };
 
+const BOOT_WORD = "MrTyper";
+
+/** Pages slide along the rail's axis, in the direction you travelled. */
+const pageVariants = {
+  enter: (direction: number) => ({ opacity: 0, y: direction * 20 }),
+  center: { opacity: 1, y: 0, transition: pageEnter },
+  exit: (direction: number) => ({
+    opacity: 0,
+    y: direction * -12,
+    transition: pageExit,
+  }),
+};
+
 function App() {
-  const reducedMotion = useReducedMotion();
   const [ready, setReady] = useState(false);
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
   const [presets, setPresets] = useState<Preset[]>([]);
   const [text, setText] = useState("");
-  const [tab, setTab] = useState<TabId>("type");
+  const [tab, setTabState] = useState<TabId>("type");
+  const [direction, setDirection] = useState(1);
   const [engine, setEngine] = useState<LiveEngineState>(EMPTY_ENGINE);
   const [lastRun, setLastRun] = useState<SessionSummary | null>(null);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
   const [maximized, setMaximized] = useState(false);
+  const [uiPrefs, setUiPrefs] = useState<UiPrefs>(loadUiPrefs);
+  const [systemReducesMotion, setSystemReducesMotion] = useState(
+    () => window.matchMedia(REDUCED_MOTION_QUERY).matches,
+  );
   const [systemDark, setSystemDark] = useState(() =>
     window.matchMedia("(prefers-color-scheme: dark)").matches,
   );
@@ -115,17 +147,35 @@ function App() {
   const toastId = useRef(0);
   const toastTimers = useRef(new Map<number, ReturnType<typeof setTimeout>>());
   const lastToast = useRef<{ signature: string; time: number } | null>(null);
+  const pendingProgress = useRef<ProgressPayload | null>(null);
+  const progressFrame = useRef(0);
   const enginePhaseRef = useRef(engine.phase);
   const settingsRef = useRef(settings);
-  const scrollRef = useRef<HTMLDivElement>(null);
+  const textRef = useRef(text);
+  const tabRef = useRef(tab);
 
   enginePhaseRef.current = engine.phase;
   settingsRef.current = settings;
+  textRef.current = text;
+  tabRef.current = tab;
 
-  const resolvedTheme = useMemo(() => {
-    if (settings.theme === "system") return systemDark ? "dark" : "light";
-    return settings.theme;
-  }, [settings.theme, systemDark]);
+  const resolvedTheme: ResolvedTheme =
+    settings.theme === "system" ? (systemDark ? "dark" : "light") : settings.theme;
+  const { accent, motion: motionPref } = uiPrefs;
+  const reduceMotion = shouldReduceMotion(motionPref, systemReducesMotion);
+  const paletteKey = `${resolvedTheme}:${accent}`;
+
+  const setTab = useCallback((next: TabId) => {
+    const from = TAB_ORDER.indexOf(tabRef.current);
+    const to = TAB_ORDER.indexOf(next);
+    if (from === to) return;
+    setDirection(to > from ? 1 : -1);
+    setTabState(next);
+  }, []);
+
+  /* ---------------------------------------------------------------- */
+  /* Toasts                                                            */
+  /* ---------------------------------------------------------------- */
 
   const dismissToast = useCallback((id: number) => {
     const timer = toastTimers.current.get(id);
@@ -146,10 +196,7 @@ function App() {
     }
     lastToast.current = { signature, time: now };
     const id = ++toastId.current;
-    setToasts((current) => [
-      ...current.slice(-2),
-      { id, kind, title, message },
-    ]);
+    setToasts((current) => [...current.slice(-2), { id, kind, title, message }]);
     const timer = setTimeout(() => {
       toastTimers.current.delete(id);
       setToasts((current) => current.filter((toast) => toast.id !== id));
@@ -159,14 +206,18 @@ function App() {
 
   const notifyBackendToast = useCallback(
     (payload: ToastPayload) => {
-      notify(
-        payload.kind,
-        payload.title ?? TOAST_TITLES[payload.kind],
-        payload.message,
-      );
+      notify(payload.kind, payload.title ?? TOAST_TITLES[payload.kind], payload.message);
     },
     [notify],
   );
+
+  useEffect(() => {
+    const timers = toastTimers.current;
+    return () => {
+      timers.forEach((timer) => clearTimeout(timer));
+      timers.clear();
+    };
+  }, []);
 
   /* ---------------------------------------------------------------- */
   /* Boot                                                              */
@@ -195,7 +246,6 @@ function App() {
               etaSecs: status.etaSecs,
               elapsedMs: status.elapsedMs,
               runId: status.runId,
-              strokes: 0,
             });
           }
         } catch {
@@ -207,11 +257,7 @@ function App() {
         setSettings(DEFAULT_SETTINGS);
         setPresets(makeDefaultPresets());
         setReady(true);
-        notify(
-          "error",
-          "Couldn't load preferences",
-          friendlyError(error),
-        );
+        notify("error", "Couldn't load preferences", friendlyError(error));
       }
     }
 
@@ -229,14 +275,6 @@ function App() {
     return () => cancelAnimationFrame(frame);
   }, [ready]);
 
-  useEffect(() => {
-    const timers = toastTimers.current;
-    return () => {
-      timers.forEach((timer) => clearTimeout(timer));
-      timers.clear();
-    };
-  }, []);
-
   /* ---------------------------------------------------------------- */
   /* Native event stream                                               */
   /* ---------------------------------------------------------------- */
@@ -245,72 +283,94 @@ function App() {
     let cancelled = false;
     const unlisteners: Array<() => void> = [];
 
+    function dropPendingProgress() {
+      pendingProgress.current = null;
+      if (progressFrame.current) {
+        cancelAnimationFrame(progressFrame.current);
+        progressFrame.current = 0;
+      }
+    }
+
+    // Progress can arrive faster than the display refreshes. Keep only the
+    // newest sample and commit it once per frame; a hidden window commits none.
+    function flushProgress() {
+      progressFrame.current = 0;
+      const payload = pendingProgress.current;
+      pendingProgress.current = null;
+      if (!payload) return;
+      setEngine((current) => {
+        if (current.runId !== null && current.runId !== payload.runId) return current;
+        return {
+          ...current,
+          runId: payload.runId,
+          typed: payload.typed,
+          total: payload.total,
+          wpm: payload.wpm,
+          etaSecs: payload.etaSecs,
+          elapsedMs: payload.elapsedMs,
+        };
+      });
+    }
+
     const handlers: {
       [K in keyof BackendEvents]: (payload: BackendEvents[K]) => void;
     } = {
       "typing-phase": (payload) => {
         if (payload.phase === "idle") {
           activeRunId.current = null;
-          setEngine((current) => ({ ...current, phase: "idle" }));
+          dropPendingProgress();
+          setEngine((current) =>
+            current.phase === "idle"
+              ? current
+              : { ...current, phase: "idle", countdown: null },
+          );
           return;
         }
-        activeRunId.current = payload.runId;
+        // A run can also begin from the global hotkey or the tray, so a new
+        // run id always resets the readouts instead of being ignored.
+        if (activeRunId.current !== payload.runId) {
+          activeRunId.current = payload.runId;
+          dropPendingProgress();
+          setLastRun(null);
+        }
         setEngine((current) => {
-          if (current.runId !== null && current.runId !== payload.runId) {
-            return current;
-          }
+          if (current.runId !== null && payload.runId < current.runId) return current;
+          const base = current.runId === payload.runId ? current : EMPTY_ENGINE;
           return {
-            ...current,
+            ...base,
             phase: payload.phase,
             countdown: payload.countdown,
             runId: payload.runId,
             total: payload.total,
-            elapsedMs:
-              payload.phase === "typing" ? current.elapsedMs : current.elapsedMs,
           };
         });
       },
       "typing-progress": (payload) => {
-        setEngine((current) => {
-          if (current.runId !== null && current.runId !== payload.runId) {
-            return current;
-          }
-          return {
-            ...current,
-            runId: payload.runId,
-            typed: payload.typed,
-            total: payload.total,
-            wpm: payload.wpm,
-            etaSecs: payload.etaSecs,
-            elapsedMs: payload.elapsedMs,
-          };
-        });
+        if (activeRunId.current !== null && activeRunId.current !== payload.runId) return;
+        pendingProgress.current = payload;
+        if (!progressFrame.current) {
+          progressFrame.current = requestAnimationFrame(flushProgress);
+        }
       },
       "typing-keystroke": (payload) => {
-        setEngine((current) => {
-          if (current.runId !== null && current.runId !== payload.runId) {
-            return current;
-          }
-          return { ...current, strokes: current.strokes + 1 };
-        });
+        if (activeRunId.current !== null && activeRunId.current !== payload.runId) return;
+        // Deliberately not React state: see lib/liveBus.
+        liveBus.emit(payload.kind);
       },
       "typing-finished": (payload) => {
-        if (
-          activeRunId.current !== null &&
-          activeRunId.current !== payload.runId
-        ) {
+        if (activeRunId.current !== null && activeRunId.current !== payload.runId) {
           return;
         }
         activeRunId.current = null;
-        const summary: SessionSummary = {
+        dropPendingProgress();
+        setLastRun({
           reason: payload.reason,
           typed: payload.typed,
           total: payload.total,
           elapsedMs: payload.elapsedMs,
           wpm: payload.wpm,
           message: payload.message,
-        };
-        setLastRun(summary);
+        });
         setEngine((current) => ({
           ...current,
           phase: "idle",
@@ -334,11 +394,7 @@ function App() {
             );
             break;
           case "escape":
-            notify(
-              "warning",
-              FINISH_TITLES.escape,
-              "All keystrokes were killed instantly.",
-            );
+            notify("warning", FINISH_TITLES.escape, "All keystrokes were killed instantly.");
             break;
           case "focusLost":
             notify(
@@ -380,17 +436,14 @@ function App() {
           unlisteners.push(...unsubscribers);
         }
       } catch (error) {
-        notify(
-          "error",
-          "Live updates unavailable",
-          friendlyError(error),
-        );
+        notify("error", "Live updates unavailable", friendlyError(error));
       }
     }
 
     void subscribe();
     return () => {
       cancelled = true;
+      dropPendingProgress();
       unlisteners.forEach((unsubscribe) => unsubscribe());
     };
   }, [notify, notifyBackendToast]);
@@ -407,11 +460,7 @@ function App() {
     }
     const timer = setTimeout(() => {
       void saveSettings(settings).catch((error) => {
-        notify(
-          "error",
-          "Preferences weren't saved",
-          friendlyError(error),
-        );
+        notify("error", "Preferences weren't saved", friendlyError(error));
       });
     }, 550);
     return () => clearTimeout(timer);
@@ -432,15 +481,35 @@ function App() {
     return () => clearTimeout(timer);
   }, [ready, text]);
 
-  useEffect(() => {
+  // Layout effects, so children that read computed colours (the canvas scope)
+  // always see the new palette in their own effects.
+  useLayoutEffect(() => {
     document.documentElement.dataset.theme = resolvedTheme;
-    const meta = document.querySelector<HTMLMetaElement>(
-      'meta[name="theme-color"]',
-    );
-    meta?.setAttribute(
-      "content",
-      resolvedTheme === "dark" ? "#080b16" : "#edf0ff",
-    );
+  }, [resolvedTheme]);
+
+  useLayoutEffect(() => {
+    applyAccent(accent);
+  }, [accent]);
+
+  useLayoutEffect(() => {
+    applyReducedMotion(reduceMotion);
+  }, [reduceMotion]);
+
+  useEffect(() => {
+    saveUiPrefs(uiPrefs);
+  }, [uiPrefs]);
+
+  useEffect(() => {
+    const query = window.matchMedia(REDUCED_MOTION_QUERY);
+    const update = () => setSystemReducesMotion(query.matches);
+    update();
+    query.addEventListener("change", update);
+    return () => query.removeEventListener("change", update);
+  }, []);
+
+  useEffect(() => {
+    const meta = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
+    meta?.setAttribute("content", resolvedTheme === "dark" ? "#08090a" : "#e4e3dc");
     void setBackdropTheme(resolvedTheme === "dark");
   }, [resolvedTheme]);
 
@@ -463,6 +532,15 @@ function App() {
     return () => query.removeEventListener("change", update);
   }, []);
 
+  // Freeze decorative animation while the window is hidden in the tray.
+  useEffect(() => {
+    const update = () =>
+      document.documentElement.classList.toggle("is-backgrounded", document.hidden);
+    update();
+    document.addEventListener("visibilitychange", update);
+    return () => document.removeEventListener("visibilitychange", update);
+  }, []);
+
   useEffect(() => {
     if (!ready) return;
     let disposed = false;
@@ -471,22 +549,21 @@ function App() {
 
     void (async () => {
       try {
-        const [maximizedNow, cleanupGeometryFn, cleanupMaximizeFn] =
-          await Promise.all([
-            isWindowMaximized(),
-            onWindowGeometryChange(() => {
-              void (async () => {
-                try {
-                  if (await isWindowMaximized()) return;
-                  const bounds = await readWindowBounds();
-                  if (bounds) await saveWindowBounds(bounds);
-                } catch {
-                  // Window geometry is best-effort persistence.
-                }
-              })();
-            }),
-            onWindowMaximizeChange(setMaximized),
-          ]);
+        const [maximizedNow, cleanupGeometryFn, cleanupMaximizeFn] = await Promise.all([
+          isWindowMaximized(),
+          onWindowGeometryChange(() => {
+            void (async () => {
+              try {
+                if (await isWindowMaximized()) return;
+                const bounds = await readWindowBounds();
+                if (bounds) await saveWindowBounds(bounds);
+              } catch {
+                // Window geometry is best-effort persistence.
+              }
+            })();
+          }),
+          onWindowMaximizeChange(setMaximized),
+        ]);
         if (disposed) {
           cleanupGeometryFn();
           cleanupMaximizeFn();
@@ -507,21 +584,14 @@ function App() {
     };
   }, [ready]);
 
-  useEffect(() => {
-    if (!scrollRef.current) return;
-    scrollRef.current.scrollTo({
-      top: 0,
-      behavior: reducedMotion ? "auto" : "smooth",
-    });
-  }, [reducedMotion, tab]);
-
   /* ---------------------------------------------------------------- */
   /* Actions                                                           */
   /* ---------------------------------------------------------------- */
 
   const handleStart = useCallback(async () => {
     if (enginePhaseRef.current !== "idle") return;
-    if (!text.trim()) {
+    const script = textRef.current;
+    if (!script.trim()) {
       notify(
         "warning",
         "Nothing to type yet",
@@ -535,18 +605,18 @@ function App() {
       ...EMPTY_ENGINE,
       phase: "countdown",
       countdown: settingsRef.current.typing.startDelaySecs,
-      total: characterCount(text),
+      total: characterCount(script),
     });
 
     try {
-      await startTyping({ text, settings: settingsRef.current });
+      await startTyping({ text: script, settings: settingsRef.current });
     } catch (error) {
       setEngine((current) =>
-        current.phase === "countdown" ? EMPTY_ENGINE : current,
+        current.phase === "countdown" && current.runId === null ? EMPTY_ENGINE : current,
       );
       notify("error", "Couldn't start typing", friendlyError(error));
     }
-  }, [notify, text]);
+  }, [notify]);
 
   const handleStop = useCallback(async () => {
     try {
@@ -578,15 +648,24 @@ function App() {
 
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
-      if (event.key !== "Escape") return;
-      if (!settingsRef.current.stopOnEsc) return;
-      if (enginePhaseRef.current === "idle") return;
-      event.preventDefault();
-      void emergencyStop().catch(() => undefined);
+      if (event.key === "Escape") {
+        if (!settingsRef.current.stopOnEsc) return;
+        if (enginePhaseRef.current === "idle") return;
+        event.preventDefault();
+        void emergencyStop().catch(() => undefined);
+        return;
+      }
+      if (event.ctrlKey && !event.altKey && !event.shiftKey && !event.metaKey) {
+        const index = ["1", "2", "3"].indexOf(event.key);
+        if (index !== -1) {
+          event.preventDefault();
+          setTab(TAB_ORDER[index]);
+        }
+      }
     }
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, []);
+  }, [setTab]);
 
   const updateTyping = useCallback((patch: Partial<TypingSettings>) => {
     setSettings((current) => ({
@@ -597,6 +676,19 @@ function App() {
 
   const updateSettings = useCallback((patch: Partial<AppSettings>) => {
     setSettings((current) => ({ ...current, ...patch }));
+  }, []);
+
+  const handleAccentChange = useCallback((next: Accent) => {
+    setUiPrefs((current) => ({ ...current, accent: next }));
+  }, []);
+
+  const handleMotionChange = useCallback((next: MotionPref) => {
+    setUiPrefs((current) => ({ ...current, motion: next }));
+  }, []);
+
+  const handleToggleTheme = useCallback(() => {
+    const dark = document.documentElement.dataset.theme !== "light";
+    setSettings((current) => ({ ...current, theme: dark ? "light" : "dark" }));
   }, []);
 
   const handleResetSettings = useCallback(() => {
@@ -616,11 +708,7 @@ function App() {
       try {
         const preset = await savePreset(name, settingsRef.current.typing);
         setPresets((current) => [preset, ...current]);
-        notify(
-          "success",
-          "Preset saved",
-          `“${preset.name}” is ready whenever you need it.`,
-        );
+        notify("success", "Preset saved", `“${preset.name}” is ready whenever you need it.`);
         return true;
       } catch (error) {
         notify("error", "Couldn't save preset", friendlyError(error));
@@ -652,7 +740,7 @@ function App() {
       try {
         await deletePreset(id);
         setPresets((current) => current.filter((preset) => preset.id !== id));
-        notify("info", "Preset removed", "The shelf has a little more room.");
+        notify("info", "Preset deleted", "It has been removed from this device.");
         return true;
       } catch (error) {
         notify("error", "Couldn't delete preset", friendlyError(error));
@@ -668,20 +756,19 @@ function App() {
         notify(
           "warning",
           "A session is running",
-          "Finish or stop this performance before changing presets.",
+          "Finish or stop it before changing presets.",
         );
         return;
       }
       setSettings((current) => ({ ...current, typing: preset.typing }));
       setTab("type");
-      notify(
-        "success",
-        "Preset loaded",
-        `“${preset.name}” is now setting the rhythm.`,
-      );
+      notify("success", "Preset loaded", `“${preset.name}” is now setting the rhythm.`);
     },
-    [notify],
+    [notify, setTab],
   );
+
+  const openType = useCallback(() => setTab("type"), [setTab]);
+  const openSettings = useCallback(() => setTab("settings"), [setTab]);
 
   const handleMinimize = useCallback(() => {
     void minimizeWindow();
@@ -706,140 +793,134 @@ function App() {
         notify(
           "info",
           "Running in preview",
-          "The title bar is non-destructive here — in the desktop app, MrTyper hides to the system tray.",
+          "In the desktop app this button hides MrTyper to the system tray.",
         );
       }
     })();
   }, [notify]);
 
+  const isRunning = engine.phase !== "idle";
   const isCounting = ready && engine.phase === "countdown";
+  const progressPercent =
+    isRunning && engine.total > 0
+      ? Math.min(100, Math.floor((engine.typed / engine.total) * 100))
+      : 0;
 
   return (
-    <MotionConfig
-      reducedMotion="user"
-      transition={springSoft}
-    >
-      <motion.div
-        className={`window-frame${maximized ? " is-maximized" : ""}`}
-        initial={{ opacity: 0, scale: 0.96, filter: "blur(16px)" }}
-        animate={
-          ready
-            ? { opacity: 1, scale: 1, filter: "blur(0px)" }
-            : { opacity: 0, scale: 0.96, filter: "blur(16px)" }
-        }
-        transition={{ type: "spring", stiffness: 180, damping: 24, mass: 0.95 }}
-      >
-        <AmbientBackground />
+    <MotionConfig reducedMotion={reduceMotion ? "always" : "never"} transition={springSoft}>
+      <div className={`frame${maximized ? " is-maximized" : ""}`}>
+        <TitleBar
+          phase={engine.phase}
+          progress={progressPercent}
+          maximized={maximized}
+          hotkeyStart={settings.hotkeyStart}
+          hotkeyPause={settings.hotkeyPause}
+          stopOnEsc={settings.stopOnEsc}
+          onMinimize={handleMinimize}
+          onMaximize={handleMaximize}
+          onClose={handleClose}
+        />
 
-        <div className="app-content-layer">
-          <TitleBar
-            phase={engine.phase}
-            maximized={maximized}
-            hotkeyStart={settings.hotkeyStart}
-            onMinimize={handleMinimize}
-            onMaximize={handleMaximize}
-            onClose={handleClose}
-          />
+        {ready ? (
+          <div className="shell">
+            <Rail
+              active={tab}
+              theme={resolvedTheme}
+              onChange={setTab}
+              onToggleTheme={handleToggleTheme}
+            />
+            <main className="main">
+              <AnimatePresence initial={false} custom={direction}>
+                <motion.div
+                  key={tab}
+                  className="page"
+                  custom={direction}
+                  variants={pageVariants}
+                  initial="enter"
+                  animate="center"
+                  exit="exit"
+                >
+                  {tab === "type" ? (
+                    <TypePage
+                      settings={settings}
+                      text={text}
+                      engine={engine}
+                      lastRun={lastRun}
+                      paletteKey={paletteKey}
+                      onTextChange={setText}
+                      onTypingChange={updateTyping}
+                      onStart={handleStart}
+                      onStop={handleStop}
+                      onPauseResume={handlePauseResume}
+                      onOpenSettings={openSettings}
+                      notify={notify}
+                    />
+                  ) : null}
+                  {tab === "presets" ? (
+                    <PresetsPage
+                      presets={presets}
+                      settings={settings}
+                      onSavePreset={handleSavePreset}
+                      onRenamePreset={handleRenamePreset}
+                      onDeletePreset={handleDeletePreset}
+                      onLoadPreset={handleLoadPreset}
+                      onStartFresh={openType}
+                      notify={notify}
+                    />
+                  ) : null}
+                  {tab === "settings" ? (
+                    <SettingsPage
+                      settings={settings}
+                      running={isRunning}
+                      accent={accent}
+                      motion={motionPref}
+                      systemReducesMotion={systemReducesMotion}
+                      onAccentChange={handleAccentChange}
+                      onMotionChange={handleMotionChange}
+                      onTypingChange={updateTyping}
+                      onSettingsChange={updateSettings}
+                      onResetSettings={handleResetSettings}
+                      onEmergencyStop={handleEmergencyStop}
+                    />
+                  ) : null}
+                </motion.div>
+              </AnimatePresence>
+            </main>
+          </div>
+        ) : (
+          <div />
+        )}
 
-          {ready ? (
-            <>
-              <div className="top-nav">
-                <Tabs active={tab} onChange={setTab} />
-                <div className="nav-meta">
-                  <span className="inline-flex items-center gap-1.5">
-                    <Keycap>{formatHotkey(settings.hotkeyStart)}</Keycap>
-                    start / stop
+        <AnimatePresence>
+          {ready ? null : (
+            <motion.div
+              key="boot"
+              className="boot"
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.22 }}
+            >
+              <Logo className="boot-mark" blink />
+              <span className="boot-word" aria-label="Loading MrTyper">
+                {Array.from(BOOT_WORD).map((letter, index) => (
+                  <span key={index} style={{ "--i": index } as CSSProperties}>
+                    {letter}
                   </span>
-                  <span className="nav-meta-sep" />
-                  <span className="inline-flex items-center gap-1.5">
-                    <Keycap>{formatHotkey(settings.hotkeyPause)}</Keycap>
-                    pause
-                  </span>
-                  <span className="nav-meta-sep" />
-                  <span className="inline-flex items-center gap-1.5">
-                    <Keycap>Esc</Keycap>
-                    panic
-                  </span>
-                </div>
-              </div>
-
-              <div className="app-scroll" ref={scrollRef}>
-                <AnimatePresence mode="wait" initial={false}>
-                  <motion.div
-                    key={tab}
-                    initial={{ opacity: 0, y: 10, filter: "blur(6px)" }}
-                    animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
-                    exit={{ opacity: 0, y: -6, filter: "blur(5px)" }}
-                    transition={pageTransition}
-                  >
-                    {tab === "type" ? (
-                      <TypePage
-                        settings={settings}
-                        text={text}
-                        engine={engine}
-                        lastRun={lastRun}
-                        onTextChange={setText}
-                        onTypingChange={updateTyping}
-                        onStart={() => void handleStart()}
-                        onStop={() => void handleStop()}
-                        onPauseResume={() => void handlePauseResume()}
-                        onOpenSettings={() => setTab("settings")}
-                        notify={notify}
-                      />
-                    ) : null}
-                    {tab === "presets" ? (
-                      <PresetsPage
-                        presets={presets}
-                        settings={settings}
-                        onSavePreset={handleSavePreset}
-                        onRenamePreset={handleRenamePreset}
-                        onDeletePreset={handleDeletePreset}
-                        onLoadPreset={handleLoadPreset}
-                        onStartFresh={() => setTab("type")}
-                        notify={notify}
-                      />
-                    ) : null}
-                    {tab === "settings" ? (
-                      <SettingsPage
-                        settings={settings}
-                        engine={engine}
-                        onTypingChange={updateTyping}
-                        onSettingsChange={updateSettings}
-                        onResetSettings={handleResetSettings}
-                        onEmergencyStop={() => void handleEmergencyStop()}
-                      />
-                    ) : null}
-                  </motion.div>
-                </AnimatePresence>
-              </div>
-            </>
-          ) : (
-            <div className="boot-screen">
-              <motion.img
-                src="/logo.svg"
-                alt=""
-                className="boot-mark"
-                animate={
-                  reducedMotion
-                    ? undefined
-                    : { opacity: [0.65, 1, 0.65], scale: [0.985, 1.015, 0.985] }
-                }
-                transition={{ duration: 2.8, repeat: Infinity, ease: "easeInOut" }}
-              />
-              <span className="boot-copy">Warming up the keys</span>
-            </div>
+                ))}
+              </span>
+            </motion.div>
           )}
-        </div>
+        </AnimatePresence>
 
         <CountdownOverlay
           open={isCounting}
           countdown={engine.countdown}
+          total={settings.typing.startDelaySecs}
           stopOnEsc={settings.stopOnEsc}
-          onCancel={() => void handleStop()}
+          onCancel={handleStop}
         />
         <ToastHost toasts={toasts} onDismiss={dismissToast} />
         <div id="overlay-root" />
-      </motion.div>
+      </div>
     </MotionConfig>
   );
 }

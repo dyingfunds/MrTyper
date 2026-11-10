@@ -159,5 +159,4 @@ export interface LiveEngineState {
   etaSecs: number | null;
   elapsedMs: number;
   runId: number | null;
-  strokes: number;
 }

@@ -1,67 +1,71 @@
-import { motion } from "framer-motion";
-import { Maximize2, Minus, X } from "lucide-react";
+import { Minus, Square, X } from "lucide-react";
+import { memo, type ReactNode } from "react";
 import type { Phase } from "../types";
-import { springSnappy } from "../lib/motion";
-import { formatHotkey } from "../lib/utils";
+import { cn, formatHotkey } from "../lib/utils";
+import { Keycap } from "./ui/Keycap";
+import { Logo } from "./Logo";
 
 interface TitleBarProps {
   phase: Phase;
+  /** 0–100 while a session is typing. */
+  progress: number;
   maximized: boolean;
   hotkeyStart: string;
+  hotkeyPause: string;
+  stopOnEsc: boolean;
   onMinimize: () => void;
   onMaximize: () => void;
   onClose: () => void;
 }
 
-function statusCopy(phase: Phase): { label: string; dot: string } {
+function statusLabel(phase: Phase, progress: number): string {
   switch (phase) {
     case "countdown":
-      return { label: "Starting soon", dot: "is-counting" };
+      return "Get ready";
     case "typing":
-      return { label: "Typing", dot: "is-live" };
+      return `Typing ${progress}%`;
     case "paused":
-      return { label: "Paused", dot: "is-paused" };
+      return `Paused ${progress}%`;
     default:
-      return { label: "Ready", dot: "" };
+      return "Ready";
   }
 }
 
 function ControlButton({
   label,
   onClick,
-  children,
   close,
+  children,
 }: {
   label: string;
   onClick: () => void;
-  children: React.ReactNode;
   close?: boolean;
+  children: ReactNode;
 }) {
   return (
-    <motion.button
+    <button
       type="button"
-      className={`window-control${close ? " is-close" : ""}`}
+      className={cn("window-control", close && "is-close")}
       aria-label={label}
       title={label}
       onClick={onClick}
-      whileTap={{ scale: 0.9 }}
-      transition={springSnappy}
     >
       {children}
-    </motion.button>
+    </button>
   );
 }
 
-export function TitleBar({
+export const TitleBar = memo(function TitleBar({
   phase,
+  progress,
   maximized,
   hotkeyStart,
+  hotkeyPause,
+  stopOnEsc,
   onMinimize,
   onMaximize,
   onClose,
 }: TitleBarProps) {
-  const status = statusCopy(phase);
-
   return (
     <header className="titlebar">
       <div
@@ -70,56 +74,60 @@ export function TitleBar({
         onDoubleClick={onMaximize}
         aria-hidden="true"
       />
-      <div className="titlebar-brand">
-        <img className="brand-mark" src="/logo.svg" alt="" draggable={false} />
+      <div className="brand">
+        <Logo className="brand-mark" />
         <span className="brand-name">
-          MrTyper <span>/</span>
+          Mr<em>Typer</em>
         </span>
       </div>
 
-      <div className="titlebar-center">
-        <span className="titlebar-status">
-          <span className={`status-dot ${status.dot}`} />
-          {status.label}
-        </span>
+      <div
+        className={cn("titlebar-status", `is-${phase}`)}
+        role="status"
+        aria-live="polite"
+      >
+        <span className={cn("led", `is-${phase}`)} />
+        {statusLabel(phase, progress)}
       </div>
 
-      <div className="titlebar-actions">
-        <div className="titlebar-shortcut">
-          <span className="keycap">{formatHotkey(hotkeyStart)}</span>
-          <span>anywhere</span>
+      <div className="titlebar-right">
+        <div className="titlebar-hints" aria-hidden="true">
+          <span className="titlebar-hint">
+            <Keycap>{formatHotkey(hotkeyStart)}</Keycap> start / stop
+          </span>
+          <span className="titlebar-hint">
+            <Keycap>{formatHotkey(hotkeyPause)}</Keycap> pause
+          </span>
+          {stopOnEsc ? (
+            <span className="titlebar-hint">
+              <Keycap>Esc</Keycap> panic
+            </span>
+          ) : null}
         </div>
         <ControlButton label="Minimize" onClick={onMinimize}>
-          <Minus size={13} strokeWidth={1.8} />
+          <Minus size={15} strokeWidth={1.6} />
         </ControlButton>
         <ControlButton
           label={maximized ? "Restore" : "Maximize"}
           onClick={onMaximize}
         >
           {maximized ? (
-            <svg
-              width="12"
-              height="12"
-              viewBox="0 0 12 12"
-              fill="none"
-              aria-hidden="true"
-            >
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
               <path
-                d="M4.4 2.2h5.4v5.4M7.6 9.8H2.2V4.4"
+                d="M3.5 3.5V1.5h7v7h-2M1.5 3.5h7v7h-7z"
                 stroke="currentColor"
-                strokeWidth="1.25"
-                strokeLinecap="round"
+                strokeWidth="1.2"
                 strokeLinejoin="round"
               />
             </svg>
           ) : (
-            <Maximize2 size={12} strokeWidth={1.8} />
+            <Square size={12} strokeWidth={1.7} />
           )}
         </ControlButton>
         <ControlButton label="Hide to tray" onClick={onClose} close>
-          <X size={13} strokeWidth={1.8} />
+          <X size={16} strokeWidth={1.6} />
         </ControlButton>
       </div>
     </header>
   );
-}
+});

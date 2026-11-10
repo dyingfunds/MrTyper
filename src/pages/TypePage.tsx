@@ -1,29 +1,34 @@
 import { AnimatePresence, motion } from "framer-motion";
 import {
-  AlignLeft,
   ArrowUpRight,
   ClipboardPaste,
-  FileText,
-  Gauge,
-  Keyboard,
-  Lock,
+  Eraser,
+  FileDown,
   Pause,
   Play,
-  ShieldCheck,
-  Sparkles,
   Square,
-  Trash2,
-  Type as TypeIcon,
-  Waves,
 } from "lucide-react";
-import { useMemo, useRef, type ChangeEvent } from "react";
-import { GlassCard } from "../components/GlassCard";
+import {
+  memo,
+  useCallback,
+  useDeferredValue,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type DragEvent as ReactDragEvent,
+  type ReactNode,
+} from "react";
+import { CadenceScope } from "../components/CadenceScope";
+import { LiveScript } from "../components/LiveScript";
+import { Tachometer } from "../components/Tachometer";
 import { AnimatedNumber } from "../components/ui/AnimatedNumber";
-import { GlassButton, IconButton, StartButton } from "../components/ui/Button";
-import { HotkeyKeycaps, Keycap } from "../components/ui/Keycap";
+import { Button, IconButton } from "../components/ui/Button";
+import { Keycap } from "../components/ui/Keycap";
 import { RangeSlider, Slider } from "../components/ui/Slider";
-import { Toggle } from "../components/ui/Toggle";
-import { springSoft } from "../lib/motion";
+import { humanLabel, humanScore } from "../lib/cadence";
+import { easeOut, springSnappy } from "../lib/motion";
 import {
   averageWpm,
   characterCount,
@@ -31,14 +36,17 @@ import {
   estimateDurationSeconds,
   formatDuration,
   formatElapsed,
+  formatHotkey,
   formatNumber,
   formatWpm,
+  normalizeScript,
   wordCount,
 } from "../lib/utils";
 import type {
   AppSettings,
   FinishReason,
   LiveEngineState,
+  Phase,
   SessionSummary,
   TypingSettings,
 } from "../types";
@@ -54,6 +62,7 @@ interface TypePageProps {
   text: string;
   engine: LiveEngineState;
   lastRun: SessionSummary | null;
+  paletteKey: string;
   onTextChange: (text: string) => void;
   onTypingChange: (patch: Partial<TypingSettings>) => void;
   onStart: () => void;
@@ -63,36 +72,287 @@ interface TypePageProps {
   notify: Notify;
 }
 
-const REASON_LABEL: Record<FinishReason, string> = {
-  completed: "Complete",
-  stopped: "Stopped",
-  escape: "Emergency stop",
-  focusLost: "Focus lost",
-  error: "Interrupted",
-};
+interface ScriptCounts {
+  characters: number;
+  words: number;
+  seconds: number;
+}
 
-const REALISM_CONTROLS: Array<{
-  key: keyof Pick<
-    TypingSettings,
-    | "punctuationEnabled"
-    | "lineBreakEnabled"
-    | "thinkingEnabled"
-    | "burstEnabled"
-    | "typosEnabled"
-    | "fatigueEnabled"
-  >;
+/** Dropped files larger than this are almost certainly not a script. */
+const MAX_DROP_BYTES = 1_500_000;
+
+/* ------------------------------------------------------------------ */
+/*  Stage                                                              */
+/* ------------------------------------------------------------------ */
+
+interface StageProps {
+  text: string;
+  phase: Phase;
+  typed: number;
+  total: number;
+  counts: ScriptCounts;
+  hotkeyStart: string;
+  onTextChange: (text: string) => void;
+  notify: Notify;
+}
+
+const Stage = memo(function Stage({
+  text,
+  phase,
+  typed,
+  total,
+  counts,
+  hotkeyStart,
+  onTextChange,
+  notify,
+}: StageProps) {
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const dragDepth = useRef(0);
+  const [dropping, setDropping] = useState(false);
+  const isIdle = phase === "idle";
+  const liveText = useMemo(() => (isIdle ? "" : normalizeScript(text)), [isIdle, text]);
+
+  const insertAtCursor = useCallback(
+    (addition: string) => {
+      const element = textareaRef.current;
+      if (!element) {
+        onTextChange(text + addition);
+        return;
+      }
+      const start = element.selectionStart ?? text.length;
+      const end = element.selectionEnd ?? text.length;
+      onTextChange(`${text.slice(0, start)}${addition}${text.slice(end)}`);
+      requestAnimationFrame(() => {
+        element.focus();
+        const caret = start + addition.length;
+        element.setSelectionRange(caret, caret);
+      });
+    },
+    [onTextChange, text],
+  );
+
+  async function pasteFromClipboard() {
+    try {
+      const clipboard = await navigator.clipboard.readText();
+      if (!clipboard) {
+        notify("info", "Clipboard is empty", "Copy some text first, then try again.");
+        return;
+      }
+      insertAtCursor(clipboard);
+    } catch {
+      notify(
+        "warning",
+        "Clipboard unavailable",
+        "Click into the editor and press Ctrl + V instead.",
+      );
+    }
+  }
+
+  function hasDroppable(event: ReactDragEvent<HTMLElement>): boolean {
+    const types = event.dataTransfer?.types;
+    return Boolean(types && (types.includes("Files") || types.includes("text/plain")));
+  }
+
+  function handleDragEnter(event: ReactDragEvent<HTMLElement>) {
+    if (!isIdle || !hasDroppable(event)) return;
+    event.preventDefault();
+    dragDepth.current += 1;
+    setDropping(true);
+  }
+
+  function handleDragOver(event: ReactDragEvent<HTMLElement>) {
+    if (!isIdle || !hasDroppable(event)) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "copy";
+  }
+
+  function handleDragLeave() {
+    dragDepth.current = Math.max(0, dragDepth.current - 1);
+    if (dragDepth.current === 0) setDropping(false);
+  }
+
+  async function handleDrop(event: ReactDragEvent<HTMLElement>) {
+    dragDepth.current = 0;
+    setDropping(false);
+    if (!isIdle || !hasDroppable(event)) return;
+    event.preventDefault();
+    const file = event.dataTransfer.files?.[0];
+    if (!file) {
+      const dropped = event.dataTransfer.getData("text/plain");
+      if (dropped) onTextChange(dropped);
+      return;
+    }
+    if (file.size > MAX_DROP_BYTES) {
+      notify("warning", "That file is too large", "Drop a plain-text file under 1.5 MB.");
+      return;
+    }
+    try {
+      const contents = await file.text();
+      if (contents.includes("\u0000")) {
+        notify("warning", "Not a text file", "MrTyper can only load plain text.");
+        return;
+      }
+      onTextChange(normalizeScript(contents));
+      notify("success", "Script loaded", `${file.name} is on the stage.`);
+    } catch {
+      notify("error", "Couldn't read that file", "Try pasting its contents instead.");
+    }
+  }
+
+  return (
+    <section
+      className={cn("panel stage rise", !isIdle && "is-live", dropping && "is-dropping")}
+      style={{ "--i": 0 } as CSSProperties}
+      aria-label="Script"
+      onDragEnter={handleDragEnter}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={(event) => void handleDrop(event)}
+    >
+      <header className="stage-head">
+        <span className="stage-title label">
+          <span className={cn("led", `is-${phase}`)} />
+          {isIdle ? "Script" : phase === "countdown" ? "Armed" : "Live"}
+        </span>
+
+        <div className="stage-stats">
+          {isIdle ? (
+            <>
+              <span>
+                <strong>{formatNumber(counts.characters)}</strong> chars
+              </span>
+              <i />
+              <span>
+                <strong>{formatNumber(counts.words)}</strong> words
+              </span>
+              <i className="is-optional" />
+              <span className="is-optional">
+                <strong>{counts.seconds ? `~${formatDuration(counts.seconds)}` : "—"}</strong>{" "}
+                to type
+              </span>
+            </>
+          ) : (
+            <span>
+              <strong>{formatNumber(typed)}</strong> / {formatNumber(total)} delivered
+            </span>
+          )}
+        </div>
+
+        <div className="stage-actions">
+          <IconButton
+            label="Paste from clipboard"
+            onClick={() => void pasteFromClipboard()}
+            disabled={!isIdle}
+          >
+            <ClipboardPaste size={15} strokeWidth={1.8} />
+          </IconButton>
+          <IconButton
+            label="Clear script"
+            tone="danger"
+            onClick={() => {
+              onTextChange("");
+              textareaRef.current?.focus();
+            }}
+            disabled={!isIdle || text.length === 0}
+          >
+            <Eraser size={15} strokeWidth={1.8} />
+          </IconButton>
+        </div>
+      </header>
+
+      <div className="stage-body">
+        <textarea
+          ref={textareaRef}
+          className="script-input"
+          value={text}
+          disabled={!isIdle}
+          aria-label="Text to type"
+          placeholder={text ? undefined : "Start writing, or paste a script…"}
+          spellCheck={false}
+          autoCorrect="off"
+          autoCapitalize="off"
+          onChange={(event) => onTextChange(event.target.value)}
+        />
+
+        <AnimatePresence initial={false}>
+          {!isIdle ? (
+            <motion.div
+              key="live"
+              className="absolute inset-0 z-[2]"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.18 }}
+            >
+              <LiveScript text={liveText} typed={typed} phase={phase} />
+            </motion.div>
+          ) : null}
+        </AnimatePresence>
+
+        <AnimatePresence initial={false}>
+          {isIdle && text.length === 0 ? (
+            <motion.div
+              key="empty"
+              className="stage-empty"
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, transition: { duration: 0.1 } }}
+              transition={{ duration: 0.4, ease: easeOut }}
+            >
+              <p className="stage-empty-title">
+                Paste a script.
+                <br />
+                Pick a rhythm.
+                <br />
+                <b>Press {formatHotkey(hotkeyStart)}.</b>
+              </p>
+              <div className="stage-empty-row">
+                <Button icon={ClipboardPaste} onClick={() => void pasteFromClipboard()}>
+                  Paste from clipboard
+                </Button>
+                <span>or drop a text file anywhere here</span>
+              </div>
+            </motion.div>
+          ) : null}
+        </AnimatePresence>
+
+        {dropping ? (
+          <div className="stage-drop">
+            <FileDown size={16} strokeWidth={1.8} />
+            Drop to load script
+          </div>
+        ) : null}
+      </div>
+    </section>
+  );
+});
+
+/* ------------------------------------------------------------------ */
+/*  Deck                                                               */
+/* ------------------------------------------------------------------ */
+
+type RealismKey =
+  | "punctuationEnabled"
+  | "lineBreakEnabled"
+  | "thinkingEnabled"
+  | "burstEnabled"
+  | "typosEnabled"
+  | "fatigueEnabled";
+
+const REALISM_KEYS: Array<{
+  key: RealismKey;
   label: string;
   value: (typing: TypingSettings) => string;
 }> = [
   {
     key: "punctuationEnabled",
     label: "Punctuation",
-    value: (typing) => `${typing.punctuationFactor.toFixed(1)}×`,
+    value: (typing) => `${typing.punctuationFactor.toFixed(1)}× pause`,
   },
   {
     key: "lineBreakEnabled",
     label: "Line breaks",
-    value: (typing) => `${typing.lineBreakExtraMs}ms`,
+    value: (typing) => `+${typing.lineBreakExtraMs} ms`,
   },
   {
     key: "thinkingEnabled",
@@ -102,27 +362,451 @@ const REALISM_CONTROLS: Array<{
   {
     key: "burstEnabled",
     label: "Bursts",
-    value: (typing) => `${typing.burstIntensity}%`,
+    value: (typing) => `${typing.burstIntensity}% surge`,
   },
   {
     key: "typosEnabled",
     label: "Typos",
-    value: (typing) => `${typing.typoChance.toFixed(1)}%`,
+    value: (typing) => `${typing.typoChance.toFixed(1)}% chance`,
   },
   {
     key: "fatigueEnabled",
     label: "Fatigue",
-    value: (typing) => `+${typing.fatigueDrift}%`,
+    value: (typing) => `+${typing.fatigueDrift}% drift`,
   },
 ];
 
-const METER_HEIGHTS = [5, 8, 12, 7, 14, 10, 6, 11, 8, 13, 6, 9];
+const METER_CELLS = 16;
 
-export function TypePage({
+interface DeckProps {
+  typing: TypingSettings;
+  phase: Phase;
+  liveWpm: number;
+  onTypingChange: (patch: Partial<TypingSettings>) => void;
+  onOpenSettings: () => void;
+}
+
+const Deck = memo(function Deck({
+  typing,
+  phase,
+  liveWpm,
+  onTypingChange,
+  onOpenSettings,
+}: DeckProps) {
+  const [tempoDragging, setTempoDragging] = useState(false);
+  const isIdle = phase === "idle";
+  const showLive = phase === "typing" || phase === "paused";
+  const score = humanScore(typing);
+  const litCells = Math.round(score * METER_CELLS);
+
+  return (
+    <aside
+      className="panel deck rise"
+      style={{ "--i": 1 } as CSSProperties}
+      aria-label="Session controls"
+    >
+      <section className="deck-section">
+        <div className="deck-head">
+          <span className="label">Tempo</span>
+          <span className="tag num">
+            {typing.minWpm}–{typing.maxWpm} wpm
+          </span>
+        </div>
+        <Tachometer
+          min={typing.minWpm}
+          max={typing.maxWpm}
+          live={showLive ? liveWpm : null}
+          paused={phase === "paused"}
+          dragging={tempoDragging}
+        />
+        <div className="tempo-range">
+          <div className="tempo-bound">
+            <strong>{typing.minWpm}</strong>
+            <span>Min</span>
+          </div>
+          <RangeSlider
+            min={10}
+            max={300}
+            step={1}
+            value={[typing.minWpm, typing.maxWpm]}
+            onChange={([minWpm, maxWpm]) => onTypingChange({ minWpm, maxWpm })}
+            ariaLabelLow="Minimum words per minute"
+            ariaLabelHigh="Maximum words per minute"
+            formatValue={(value) => `${value} words per minute`}
+            bubble={(value) => `${value}`}
+            disabled={!isIdle}
+            onDragChange={setTempoDragging}
+          />
+          <div className="tempo-bound">
+            <strong>{typing.maxWpm}</strong>
+            <span>Max</span>
+          </div>
+        </div>
+      </section>
+
+      <section className="deck-section">
+        <div className="control-row">
+          <div className="control-top">
+            <span className="control-name">
+              Head start
+              <span className="control-hint">before the first key</span>
+            </span>
+            <span className="control-value">{typing.startDelaySecs}s</span>
+          </div>
+          <Slider
+            min={1}
+            max={30}
+            step={1}
+            value={typing.startDelaySecs}
+            onChange={(startDelaySecs) => onTypingChange({ startDelaySecs })}
+            ariaLabel="Start delay in seconds"
+            formatValue={(value) => `${value} seconds`}
+            bubble={(value) => `${value}s`}
+            disabled={!isIdle}
+          />
+        </div>
+        <div className="control-row">
+          <div className="control-top">
+            <span className="control-name">
+              Randomness
+              <span className="control-hint">key-to-key variance</span>
+            </span>
+            <span className="control-value">{typing.randomness}%</span>
+          </div>
+          <Slider
+            min={0}
+            max={100}
+            step={1}
+            value={typing.randomness}
+            onChange={(randomness) => onTypingChange({ randomness })}
+            ariaLabel="Keystroke randomness"
+            formatValue={(value) => `${value} percent`}
+            bubble={(value) => `${value}%`}
+            disabled={!isIdle}
+          />
+        </div>
+      </section>
+
+      <section className="deck-section">
+        <div className="deck-head">
+          <span className="label">Humanize</span>
+          <button type="button" className="deck-link" onClick={onOpenSettings}>
+            Fine-tune
+            <ArrowUpRight size={13} strokeWidth={2} />
+          </button>
+        </div>
+
+        <div className="human-grid">
+          {REALISM_KEYS.map((control) => {
+            const enabled = typing[control.key];
+            return (
+              <button
+                key={control.key}
+                type="button"
+                role="switch"
+                aria-checked={enabled}
+                aria-label={`${control.label} ${enabled ? "on" : "off"}`}
+                className="human-key"
+                disabled={!isIdle}
+                onClick={() => onTypingChange({ [control.key]: !enabled })}
+              >
+                <span className="human-key-led" />
+                <span className="human-key-name">{control.label}</span>
+                <span className="human-key-value">
+                  {enabled ? control.value(typing) : "off"}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+
+        <div className="human-meter" aria-label={`Humanity: ${humanLabel(score)}`}>
+          <div className="human-meter-cells" aria-hidden="true">
+            {Array.from({ length: METER_CELLS }, (_, index) => (
+              <i
+                key={index}
+                className={index < litCells ? "is-on" : undefined}
+                style={{ "--i": index } as CSSProperties}
+              />
+            ))}
+          </div>
+          <span className="human-meter-label">{humanLabel(score)}</span>
+        </div>
+      </section>
+    </aside>
+  );
+});
+
+/* ------------------------------------------------------------------ */
+/*  Transport                                                          */
+/* ------------------------------------------------------------------ */
+
+const REASON_LABEL: Record<FinishReason, string> = {
+  completed: "Delivered",
+  stopped: "Stopped",
+  escape: "Emergency stop",
+  focusLost: "Focus lost",
+  error: "Interrupted",
+};
+
+const REASON_TONE: Record<FinishReason, string> = {
+  completed: "is-ok",
+  stopped: "is-warn",
+  escape: "is-bad",
+  focusLost: "is-bad",
+  error: "is-bad",
+};
+
+/** Runs already celebrated, so revisiting the tab does not replay the sweep. */
+const celebratedRuns = new WeakSet<SessionSummary>();
+
+/** Progress events pause during long thinking gaps; the clock should not. */
+function useTickingElapsed(elapsedMs: number, phase: Phase): number {
+  const [now, setNow] = useState(elapsedMs);
+  const anchor = useRef({ elapsedMs, at: performance.now() });
+
+  useEffect(() => {
+    anchor.current = { elapsedMs, at: performance.now() };
+    setNow(elapsedMs);
+  }, [elapsedMs]);
+
+  useEffect(() => {
+    if (phase !== "typing") return;
+    const timer = window.setInterval(() => {
+      const { elapsedMs: base, at } = anchor.current;
+      setNow(base + (performance.now() - at));
+    }, 250);
+    return () => window.clearInterval(timer);
+  }, [phase]);
+
+  return now;
+}
+
+interface ReadoutProps {
+  label: string;
+  value: ReactNode;
+  unit?: string;
+  accent?: boolean;
+}
+
+function Readout({ label, value, unit, accent }: ReadoutProps) {
+  return (
+    <div className="readout">
+      <span className="label">{label}</span>
+      <span className={cn("readout-value", accent && "is-accent")}>
+        {value}
+        {unit ? <small>{unit}</small> : null}
+      </span>
+    </div>
+  );
+}
+
+interface TransportProps {
+  engine: LiveEngineState;
+  lastRun: SessionSummary | null;
+  typing: TypingSettings;
+  counts: ScriptCounts;
+  hotkeyStart: string;
+  hotkeyPause: string;
+  paletteKey: string;
+  onStart: () => void;
+  onStop: () => void;
+  onPauseResume: () => void;
+}
+
+const Transport = memo(function Transport({
+  engine,
+  lastRun,
+  typing,
+  counts,
+  hotkeyStart,
+  hotkeyPause,
+  paletteKey,
+  onStart,
+  onStop,
+  onPauseResume,
+}: TransportProps) {
+  const { phase } = engine;
+  const isIdle = phase === "idle";
+  const isPaused = phase === "paused";
+  const isCounting = phase === "countdown";
+  const elapsed = useTickingElapsed(engine.elapsedMs, phase);
+
+  const [flashRun, setFlashRun] = useState<SessionSummary | null>(null);
+  useEffect(() => {
+    if (!lastRun || lastRun.reason !== "completed") return;
+    if (celebratedRuns.has(lastRun)) return;
+    celebratedRuns.add(lastRun);
+    setFlashRun(lastRun);
+  }, [lastRun]);
+
+  const progress = !isIdle
+    ? engine.total
+      ? Math.min(1, engine.typed / engine.total)
+      : 0
+    : lastRun?.total
+      ? Math.min(1, lastRun.typed / lastRun.total)
+      : 0;
+  const percent = Math.floor(progress * 100);
+
+  let statusTone = "";
+  let statusText = "Predicted cadence";
+  if (isCounting) {
+    statusTone = "is-live";
+    statusText = "Armed · waiting for focus";
+  } else if (isPaused) {
+    statusTone = "is-warn";
+    statusText = "Paused · holding position";
+  } else if (phase === "typing") {
+    statusTone = "is-live";
+    statusText = "Recording live cadence";
+  } else if (lastRun) {
+    statusTone = REASON_TONE[lastRun.reason];
+    statusText = `Last run · ${REASON_LABEL[lastRun.reason]}`;
+  }
+
+  return (
+    <footer
+      className="panel transport rise"
+      style={{ "--i": 2, "--progress": progress } as CSSProperties}
+      aria-label="Transport"
+    >
+      <div className={cn("transport-progress", isIdle && "is-idle")} aria-hidden="true">
+        <div className="transport-progress-fill" />
+      </div>
+      {flashRun && flashRun === lastRun ? (
+        <span className="transport-flash" aria-hidden="true" />
+      ) : null}
+
+      <div className="transport-main">
+        <AnimatePresence mode="popLayout" initial={false}>
+          {isIdle ? (
+            <motion.div
+              key="start"
+              className="transport-swap"
+              initial={{ opacity: 0, scale: 0.94 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.94, transition: { duration: 0.1 } }}
+              transition={springSnappy}
+            >
+              <button type="button" className="start-btn" onClick={onStart}>
+                <span className="start-btn-icon">
+                  <Play size={15} fill="currentColor" strokeWidth={0} />
+                </span>
+                <span className="start-btn-copy">
+                  <span className="start-btn-label">Start typing</span>
+                  <span className="start-btn-sub">{typing.startDelaySecs}s head start</span>
+                </span>
+                <Keycap>{formatHotkey(hotkeyStart)}</Keycap>
+              </button>
+            </motion.div>
+          ) : (
+            <motion.div
+              key="running"
+              className="transport-swap run-controls"
+              initial={{ opacity: 0, scale: 0.94 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.94, transition: { duration: 0.1 } }}
+              transition={springSnappy}
+            >
+              <button
+                type="button"
+                className={cn("run-btn", isPaused && "is-resume")}
+                onClick={onPauseResume}
+                disabled={isCounting}
+                title={`${isPaused ? "Resume" : "Pause"} (${formatHotkey(hotkeyPause)})`}
+              >
+                {isPaused ? (
+                  <Play size={15} fill="currentColor" strokeWidth={0} />
+                ) : (
+                  <Pause size={15} fill="currentColor" strokeWidth={0} />
+                )}
+                {isPaused ? "Resume" : "Pause"}
+              </button>
+              <button
+                type="button"
+                className="run-btn is-stop"
+                onClick={onStop}
+                title={`Stop (${formatHotkey(hotkeyStart)})`}
+              >
+                <Square size={13} fill="currentColor" strokeWidth={0} />
+                Stop
+              </button>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
+
+      <div className="scope">
+        <div className="scope-head">
+          <span className={cn("scope-status", statusTone)} role="status">
+            <span className={cn("led", `is-${phase}`)} />
+            <span className="label">{statusText}</span>
+          </span>
+          <div className="scope-legend" aria-hidden="true">
+            <span>
+              <i /> key
+            </span>
+            <span>
+              <i className="is-typo" /> typo
+            </span>
+            <span>
+              <i className="is-pause" /> pause
+            </span>
+          </div>
+        </div>
+        <CadenceScope typing={typing} phase={phase} paletteKey={paletteKey} />
+      </div>
+
+      <div className="readouts">
+        {!isIdle ? (
+          <>
+            <Readout label="Progress" value={percent} unit="%" accent />
+            <Readout label="Elapsed" value={formatElapsed(elapsed)} />
+            <Readout
+              label="Remaining"
+              value={
+                isCounting || engine.etaSecs === null || !Number.isFinite(engine.etaSecs)
+                  ? "—"
+                  : formatDuration(engine.etaSecs)
+              }
+            />
+          </>
+        ) : lastRun ? (
+          <>
+            <Readout label="Avg speed" value={formatWpm(lastRun.wpm)} unit="wpm" accent />
+            <Readout label="Time" value={formatElapsed(lastRun.elapsedMs)} />
+            <Readout label="Delivered" value={percent} unit="%" />
+          </>
+        ) : (
+          <>
+            <Readout
+              label="Target"
+              value={<AnimatedNumber value={averageWpm(typing)} />}
+              unit="wpm"
+            />
+            <Readout label="Length" value={formatNumber(counts.characters)} unit="ch" />
+            <Readout
+              label="Estimate"
+              value={counts.seconds ? `~${formatDuration(counts.seconds)}` : "—"}
+            />
+          </>
+        )}
+      </div>
+    </footer>
+  );
+});
+
+/* ------------------------------------------------------------------ */
+/*  Page                                                               */
+/* ------------------------------------------------------------------ */
+
+export const TypePage = memo(function TypePage({
   settings,
   text,
   engine,
   lastRun,
+  paletteKey,
   onTextChange,
   onTypingChange,
   onStart,
@@ -132,616 +816,48 @@ export function TypePage({
   notify,
 }: TypePageProps) {
   const typing = settings.typing;
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const isIdle = engine.phase === "idle";
-  const isCounting = engine.phase === "countdown";
-  const isPaused = engine.phase === "paused";
-  const isActive = !isIdle;
-
-  const counts = useMemo(
+  // Counting a long script should never hold up a keystroke in the editor.
+  const deferredText = useDeferredValue(text);
+  const counts = useMemo<ScriptCounts>(
     () => ({
-      characters: characterCount(text),
-      words: wordCount(text),
-      seconds: estimateDurationSeconds(text, typing),
+      characters: characterCount(deferredText),
+      words: wordCount(deferredText),
+      seconds: estimateDurationSeconds(deferredText, typing),
     }),
-    [text, typing],
+    [deferredText, typing],
   );
-
-  const progress = engine.total
-    ? Math.min(1, engine.typed / engine.total)
-    : lastRun?.total
-      ? Math.min(1, lastRun.typed / lastRun.total)
-      : 0;
-
-  const enabledLayers = REALISM_CONTROLS.filter(
-    (control) => typing[control.key],
-  ).length;
-  const humanScore =
-    0.16 +
-    (enabledLayers / REALISM_CONTROLS.length) * 0.62 +
-    (typing.randomness / 100) * 0.22;
-
-  async function pasteFromClipboard() {
-    try {
-      const clipboard = await navigator.clipboard.readText();
-      if (!clipboard) {
-        notify("info", "Clipboard is empty", "Copy some text first, then try again.");
-        return;
-      }
-      const el = textareaRef.current;
-      if (el) {
-        const start = el.selectionStart ?? text.length;
-        const end = el.selectionEnd ?? text.length;
-        const next = `${text.slice(0, start)}${clipboard}${text.slice(end)}`;
-        onTextChange(next);
-        requestAnimationFrame(() => {
-          el.focus();
-          el.setSelectionRange(start + clipboard.length, start + clipboard.length);
-        });
-      } else {
-        onTextChange(text + clipboard);
-      }
-    } catch {
-      notify(
-        "warning",
-        "Clipboard unavailable",
-        "Use Ctrl + V inside the editor instead.",
-      );
-    }
-  }
 
   return (
-    <div className="page" id="panel-type" role="tabpanel" aria-label="Type">
-      <div className="page-heading">
-        <div className="page-heading-copy">
-          <span className="eyebrow">The writing room</span>
-          <h1 className="page-title">Make every keystroke feel human.</h1>
-          <p className="page-subtitle">
-            Give MrTyper a script, dial in a rhythm, then let it write itself
-            into whatever window you choose.
-          </p>
-        </div>
-        <div className="heading-badges">
-          <span className="stat-pill">
-            <Gauge size={11} strokeWidth={1.8} />
-            {typing.minWpm}–{typing.maxWpm} WPM
-          </span>
-          <span className="stat-pill">
-            <Sparkles size={11} strokeWidth={1.8} />
-            {typing.randomness}% random
-          </span>
-          <span className="stat-pill">
-            <Lock size={10} strokeWidth={1.8} />
-            Local only
-          </span>
-        </div>
-      </div>
-
-      <div className="type-grid">
-        <div className="type-column">
-          <GlassCard className="script-card card-pad">
-            <div className="card-heading-row">
-              <div className="flex min-w-0 items-start gap-2.5">
-                <span className="mini-orb">
-                  <AlignLeft size={14} strokeWidth={1.7} />
-                </span>
-                <div className="card-heading-copy">
-                  <span className="card-heading-kicker">Script</span>
-                  <h2 className="section-title">What should MrTyper say?</h2>
-                </div>
-              </div>
-              <span className="editor-badge">
-                <TypeIcon size={8} strokeWidth={2} />
-                PLAIN TEXT
-              </span>
-            </div>
-
-            <div className="script-body">
-              <textarea
-                ref={textareaRef}
-                className="script-input"
-                value={text}
-                disabled={!isIdle}
-                aria-label="Text to type"
-                placeholder={
-                  "Paste an email, a story, a message…\n\nMrTyper types every character — accents, emoji, and all."
-                }
-                spellCheck={false}
-                onChange={(event: ChangeEvent<HTMLTextAreaElement>) =>
-                  onTextChange(event.target.value)
-                }
-              />
-              <div className="script-input-footer" aria-hidden="true">
-                <span className="script-wordcount">
-                  {formatNumber(counts.characters)} characters
-                </span>
-                <span>Newlines become Enter</span>
-              </div>
-            </div>
-
-            <div className="script-footer">
-              <div className="script-stats">
-                <div className="script-stat">
-                  <span className="script-stat-value">
-                    {formatNumber(counts.characters)}
-                  </span>
-                  <span className="script-stat-label">Characters</span>
-                </div>
-                <div className="script-stat">
-                  <span className="script-stat-value">
-                    {formatNumber(counts.words)}
-                  </span>
-                  <span className="script-stat-label">Words</span>
-                </div>
-                <div className="script-stat">
-                  <span className="script-stat-value">
-                    {counts.seconds ? `~${formatDuration(counts.seconds)}` : "—"}
-                  </span>
-                  <span className="script-stat-label">At this pace</span>
-                </div>
-              </div>
-              <div className="script-actions">
-                <GlassButton
-                  size="sm"
-                  variant="ghost"
-                  icon={ClipboardPaste}
-                  onClick={pasteFromClipboard}
-                  disabled={!isIdle}
-                >
-                  Paste
-                </GlassButton>
-                <IconButton
-                  label="Clear script"
-                  onClick={() => onTextChange("")}
-                  disabled={!isIdle || text.length === 0}
-                >
-                  <Trash2 size={13} strokeWidth={1.7} />
-                </IconButton>
-              </div>
-            </div>
-          </GlassCard>
-
-          <GlassCard className="progress-card card-pad">
-            <div className="progress-header">
-              <div className="card-heading-copy">
-                <span className="card-heading-kicker">Live progress</span>
-                <h2 className="section-title">
-                  {isActive
-                    ? isPaused
-                      ? "Holding the rhythm."
-                      : isCounting
-                        ? "Waiting for focus."
-                        : "In the flow."
-                    : lastRun
-                      ? REASON_LABEL[lastRun.reason]
-                      : "A clean slate."}
-                </h2>
-              </div>
-              <div className="live-orb" aria-hidden="true">
-                <div className={cn("live-wave", (engine.phase === "typing") && "is-active")}>
-                  {Array.from({ length: 5 }).map((_, index) => (
-                    <span key={index} />
-                  ))}
-                </div>
-                <AnimatePresence mode="popLayout">
-                  {engine.phase === "typing" && engine.strokes > 0 ? (
-                    <motion.span
-                      key={engine.strokes}
-                      className="ripple-ring"
-                      initial={{ opacity: 0.72, scale: 0.38 }}
-                      animate={{ opacity: 0, scale: 1.75 }}
-                      exit={{ opacity: 0, transition: { duration: 0.08 } }}
-                      transition={{ type: "spring", stiffness: 135, damping: 19 }}
-                    />
-                  ) : null}
-                </AnimatePresence>
-              </div>
-            </div>
-
-            <AnimatePresence mode="wait" initial={false}>
-              {isActive ? (
-                <motion.div
-                  key="live-progress"
-                  initial={{ opacity: 0, y: 8 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -5 }}
-                  transition={springSoft}
-                >
-                  <div className="wpm-live">
-                    <strong>
-                      <AnimatedNumber
-                        value={engine.wpm}
-                        format={(next) => formatWpm(next)}
-                      />
-                    </strong>
-                    <span>effective WPM</span>
-                    <span className="wpm-live-note">
-                      {isPaused ? "Paused" : "Human cadence"}
-                      <br />
-                      {engine.typed > 0 ? "after pauses" : "warming up"}
-                    </span>
-                  </div>
-
-                  <div className="progress-track-wrap">
-                    <div className="progress-track">
-                      <motion.div
-                        className={cn(
-                          "progress-fill",
-                          engine.phase === "typing" && "is-shimmer",
-                        )}
-                        initial={false}
-                        animate={{ width: `${progress * 100}%` }}
-                        transition={springSoft}
-                      />
-                    </div>
-                  </div>
-
-                  <div className="progress-stats">
-                    <div className="progress-stat">
-                      <strong>
-                        {formatNumber(engine.typed)}
-                        <span className="text-[var(--text-faint)]">
-                          {" "}
-                          / {formatNumber(engine.total)}
-                        </span>
-                      </strong>
-                      <span>Characters</span>
-                    </div>
-                    <div className="progress-stat">
-                      <strong>{formatElapsed(engine.elapsedMs)}</strong>
-                      <span>Elapsed</span>
-                    </div>
-                    <div className="progress-stat progress-stat--right">
-                      <strong>
-                        {enginelessEta(engine.etaSecs, engine.phase)}
-                      </strong>
-                      <span>Remaining</span>
-                    </div>
-                  </div>
-                </motion.div>
-              ) : lastRun ? (
-                <motion.div
-                  key="summary-progress"
-                  initial={{ opacity: 0, y: 8 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -5 }}
-                  transition={springSoft}
-                >
-                  <div className="mt-3 flex items-center justify-between gap-3">
-                    <span
-                      className={cn(
-                        "progress-summary-reason",
-                        (lastRun.reason === "error" ||
-                          lastRun.reason === "focusLost") &&
-                          "is-error",
-                      )}
-                    >
-                      {lastRun.reason === "completed" ? (
-                        <ShieldCheck size={9} strokeWidth={2} />
-                      ) : lastRun.reason === "escape" ? (
-                        <Square size={8} strokeWidth={2} />
-                      ) : (
-                        <Waves size={9} strokeWidth={2} />
-                      )}
-                      {REASON_LABEL[lastRun.reason]}
-                    </span>
-                    <span className="faint text-[9px]">
-                      {formatNumber(lastRun.typed)} of {formatNumber(lastRun.total)}{" "}
-                      delivered
-                    </span>
-                  </div>
-                  <div className="progress-track-wrap">
-                    <div className="progress-track">
-                      <motion.div
-                        className="progress-fill"
-                        initial={{ width: 0 }}
-                        animate={{ width: `${progress * 100}%` }}
-                        transition={springSoft}
-                      />
-                    </div>
-                  </div>
-                  <div className="progress-stats">
-                    <div className="progress-stat">
-                      <strong>{formatWpm(lastRun.wpm)}</strong>
-                      <span>Final WPM</span>
-                    </div>
-                    <div className="progress-stat">
-                      <strong>{formatElapsed(lastRun.elapsedMs)}</strong>
-                      <span>On stage</span>
-                    </div>
-                    <div className="progress-stat progress-stat--right">
-                      <strong>
-                        {lastRun.reason === "completed" ? "Done" : "Stopped"}
-                      </strong>
-                      <span>Status</span>
-                    </div>
-                  </div>
-                </motion.div>
-              ) : (
-                <motion.div
-                  key="idle-progress"
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0 }}
-                  transition={springSoft}
-                  className="progress-idle"
-                >
-                  <p className="section-hint max-w-[340px]">
-                    Your keystrokes, pause patterns, and quiet corrections will
-                    appear here once the curtain rises.
-                  </p>
-                  <div className="progress-idle-line" />
-                  <div className="progress-idle-stats">
-                    <div className="progress-stat">
-                      <strong>0</strong>
-                      <span>WPM</span>
-                    </div>
-                    <div className="progress-stat">
-                      <strong>0:00</strong>
-                      <span>Elapsed</span>
-                    </div>
-                    <div className="progress-stat progress-stat--right">
-                      <strong>{formatDuration(counts.seconds)}</strong>
-                      <span>Estimate</span>
-                    </div>
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </GlassCard>
-        </div>
-
-        <div className="type-column">
-          <GlassCard className="card-pad">
-            <div className="card-heading-row">
-              <div className="flex min-w-0 items-start gap-2.5">
-                <span className="mini-orb">
-                  <Keyboard size={14} strokeWidth={1.7} />
-                </span>
-                <div className="card-heading-copy">
-                  <span className="card-heading-kicker">Session</span>
-                  <h2 className="section-title">Set the pace.</h2>
-                </div>
-              </div>
-              <span className="stat-pill">
-                <span
-                  className={cn(
-                    "status-dot",
-                    engine.phase === "typing" && "is-live",
-                    engine.phase === "paused" && "is-paused",
-                    engine.phase === "countdown" && "is-counting",
-                  )}
-                />
-                {engine.phase === "idle"
-                  ? "Ready"
-                  : engine.phase === "typing"
-                    ? "Typing"
-                    : engine.phase === "paused"
-                      ? "Paused"
-                      : "Starting"}
-              </span>
-            </div>
-
-            <div className="mt-4">
-              <div className="speed-readout">
-                <div className="speed-big">
-                  <AnimatedNumber
-                    value={averageWpm(typing)}
-                    format={(next) => Math.round(next).toString()}
-                  />
-                  <span>WPM average</span>
-                </div>
-                <span className="speed-envelope">
-                  {typing.minWpm}–{typing.maxWpm} range
-                </span>
-              </div>
-              <RangeSlider
-                min={10}
-                max={300}
-                step={1}
-                value={[typing.minWpm, typing.maxWpm]}
-                onChange={([minWpm, maxWpm]) =>
-                  onTypingChange({ minWpm, maxWpm })
-                }
-                ariaLabelLow="Minimum words per minute"
-                ariaLabelHigh="Maximum words per minute"
-                formatValue={(value) => `${value} words per minute`}
-                disabled={!isIdle}
-              />
-              <div className="range-values">
-                <span className="range-value-pill">{typing.minWpm} min</span>
-                <span className="range-value-pill">{typing.maxWpm} max</span>
-              </div>
-            </div>
-
-            <div className="control-divider hairline" />
-
-            <div className="secondary-controls-grid">
-              <div>
-                <div className="control-label-row">
-                  <span className="control-label">Head start</span>
-                  <span className="control-value">
-                    {typing.startDelaySecs}s
-                  </span>
-                </div>
-                <Slider
-                  min={1}
-                  max={30}
-                  step={1}
-                  value={typing.startDelaySecs}
-                  onChange={(value) => onTypingChange({ startDelaySecs: value })}
-                  ariaLabel="Start delay in seconds"
-                  formatValue={(value) => `${value} seconds`}
-                  disabled={!isIdle}
-                />
-                <p className="control-caption">Before the first key lands.</p>
-              </div>
-              <div>
-                <div className="control-label-row">
-                  <span className="control-label">Randomness</span>
-                  <span className="control-value">{typing.randomness}%</span>
-                </div>
-                <Slider
-                  min={0}
-                  max={100}
-                  step={1}
-                  value={typing.randomness}
-                  onChange={(value) => onTypingChange({ randomness: value })}
-                  ariaLabel="Keystroke randomness"
-                  formatValue={(value) => `${value} percent`}
-                  disabled={!isIdle}
-                />
-                <p className="control-caption">Key-to-key variance.</p>
-              </div>
-            </div>
-
-            <div className="session-actions">
-              <AnimatePresence mode="popLayout" initial={false}>
-                {isIdle ? (
-                  <motion.div
-                    key="start"
-                    className="w-full"
-                    initial={{ opacity: 0, y: 8, scale: 0.98 }}
-                    animate={{ opacity: 1, y: 0, scale: 1 }}
-                    exit={{ opacity: 0, y: -6, scale: 0.98 }}
-                    transition={springSoft}
-                  >
-                    <StartButton
-                      onClick={onStart}
-                      mode="start"
-                      label="Start typing"
-                      icon={<Play size={12} fill="currentColor" strokeWidth={0} />}
-                    />
-                  </motion.div>
-                ) : (
-                  <motion.div
-                    key="running"
-                    className="flex w-full gap-2"
-                    initial={{ opacity: 0, y: 8, scale: 0.98 }}
-                    animate={{ opacity: 1, y: 0, scale: 1 }}
-                    exit={{ opacity: 0, y: -6, scale: 0.98 }}
-                    transition={springSoft}
-                  >
-                    <GlassButton
-                      className="flex-1"
-                      icon={isPaused ? Play : Pause}
-                      onClick={onPauseResume}
-                      disabled={isCounting}
-                    >
-                      {isPaused ? "Resume" : "Pause"}
-                    </GlassButton>
-                    <GlassButton
-                      className="flex-1"
-                      variant="danger"
-                      icon={Square}
-                      onClick={onStop}
-                    >
-                      Stop
-                    </GlassButton>
-                  </motion.div>
-                )}
-              </AnimatePresence>
-            </div>
-
-            <div className="shortcut-note">
-              <span className="inline-flex items-center gap-1">
-                <HotkeyKeycaps accelerator={settings.hotkeyStart} /> start / stop
-              </span>
-              <span className="nav-meta-sep" />
-              <span className="inline-flex items-center gap-1">
-                <HotkeyKeycaps accelerator={settings.hotkeyPause} /> pause
-              </span>
-              {settings.stopOnEsc ? (
-                <>
-                  <span className="nav-meta-sep" />
-                  <span className="inline-flex items-center gap-1">
-                    <Keycap>Esc</Keycap> is safety
-                  </span>
-                </>
-              ) : null}
-            </div>
-          </GlassCard>
-
-          <GlassCard className="card-pad">
-            <div className="card-heading-row">
-              <div className="card-heading-copy">
-                <span className="card-heading-kicker">Human texture</span>
-                <h2 className="section-title">A little imperfection.</h2>
-              </div>
-              <button
-                type="button"
-                className="section-link"
-                onClick={onOpenSettings}
-              >
-                Tune
-                <ArrowUpRight size={10} strokeWidth={1.8} />
-              </button>
-            </div>
-
-            <div className="realism-grid">
-              {REALISM_CONTROLS.map((control) => {
-                const enabled = typing[control.key];
-                return (
-                  <div
-                    key={control.key}
-                    className={cn("realism-chip", enabled && "is-on")}
-                    title={
-                      enabled
-                        ? `${control.label}: ${control.value(typing)}`
-                        : `${control.label}: off`
-                    }
-                  >
-                    <span className="realism-chip-label">
-                      <span>{control.label}</span>
-                      <span className="realism-chip-value">
-                        {enabled ? control.value(typing) : "off"}
-                      </span>
-                    </span>
-                    <Toggle
-                      checked={enabled}
-                      onChange={(checked) =>
-                        onTypingChange({ [control.key]: checked })
-                      }
-                      label={`${control.label} ${enabled ? "on" : "off"}`}
-                      disabled={!isIdle}
-                    />
-                  </div>
-                );
-              })}
-            </div>
-
-            <div className="realism-footer">
-              <div className="human-readout">
-                <div className="human-meter" aria-hidden="true">
-                  {METER_HEIGHTS.map((height, index) => (
-                    <span
-                      key={index}
-                      style={{
-                        height: Math.max(3, height * humanScore),
-                        opacity: 0.3 + humanScore * 0.65,
-                      }}
-                    />
-                  ))}
-                </div>
-                <span className="section-hint">
-                  {enabledLayers} of {REALISM_CONTROLS.length} layers on
-                </span>
-              </div>
-              <span className="faint text-[8.5px]">
-                {typing.typosEnabled
-                  ? "QWERTY neighbour map"
-                  : "Clean key strikes"}
-              </span>
-            </div>
-          </GlassCard>
-        </div>
-      </div>
+    <div className="type-page" id="panel-type" role="tabpanel" aria-label="Type">
+      <Stage
+        text={text}
+        phase={engine.phase}
+        typed={engine.typed}
+        total={engine.total}
+        counts={counts}
+        hotkeyStart={settings.hotkeyStart}
+        onTextChange={onTextChange}
+        notify={notify}
+      />
+      <Deck
+        typing={typing}
+        phase={engine.phase}
+        liveWpm={engine.wpm}
+        onTypingChange={onTypingChange}
+        onOpenSettings={onOpenSettings}
+      />
+      <Transport
+        engine={engine}
+        lastRun={lastRun}
+        typing={typing}
+        counts={counts}
+        hotkeyStart={settings.hotkeyStart}
+        hotkeyPause={settings.hotkeyPause}
+        paletteKey={paletteKey}
+        onStart={onStart}
+        onStop={onStop}
+        onPauseResume={onPauseResume}
+      />
     </div>
   );
-}
-
-function enginelessEta(etaSecs: number | null, phase: string): string {
-  if (phase === "paused") return "Paused";
-  if (etaSecs === null || !Number.isFinite(etaSecs)) return "—";
-  return formatDuration(etaSecs);
-}
+});
