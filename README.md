@@ -4,13 +4,16 @@
 
 ## Pick your platform
 
-| Platform | Folder | Get it |
-| --- | --- | --- |
-| **Windows** 10/11 | this folder (repository root) | [release/MrTyper_2.0.0_x64-setup.exe](release/MrTyper_2.0.0_x64-setup.exe) |
-| **macOS** 11+ (Apple Silicon and Intel) | [MrTyper-macOS/](MrTyper-macOS/) | `.dmg` from the [Build workflow](.github/workflows/build.yml) artifacts; see the [macOS README](MrTyper-macOS/README.md) |
-| **Arch Linux** (and other distros) | [MrTyper-ArchLinux/](MrTyper-ArchLinux/) | `makepkg -si` with the included PKGBUILD, or the AppImage / deb / rpm artifacts; see the [Linux README](MrTyper-ArchLinux/README.md) |
+**[⬇ Download the latest release](https://github.com/dyingfunds/MrTyper/releases/latest)**: ready-made installers for every platform, so you don't need to build anything.
 
-All three share the same interface, engine, presets and settings format. Each folder is a complete, self-contained project; only the operating-system layer differs. The rest of this README describes the Windows app.
+| Platform | Download | Guide |
+| --- | --- | --- |
+| **Windows** 10/11 | `MrTyper_…_x64-setup.exe` | This README |
+| **macOS** 11+ (Apple Silicon and Intel) | `MrTyper_…_universal.dmg` | [MrTyper-macOS](MrTyper-macOS/README.md) |
+| **Arch Linux** | `mrtyper-…-x86_64.pkg.tar.zst` | [MrTyper-ArchLinux](MrTyper-ArchLinux/README.md) |
+| **Ubuntu, Debian, Fedora, any Linux** | `.deb`, `.rpm` or `.AppImage` | [MrTyper-ArchLinux](MrTyper-ArchLinux/README.md) |
+
+All three share the same interface, engine, presets and settings format. Each platform's source lives in its own self-contained folder: the repository root for Windows, [MrTyper-macOS/](MrTyper-macOS/), and [MrTyper-ArchLinux/](MrTyper-ArchLinux/). The rest of this README describes the Windows app.
 
 ![MrTyper Type screen in dark mode](docs/preview-type-dark.png)
 

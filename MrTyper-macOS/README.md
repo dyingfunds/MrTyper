@@ -8,7 +8,7 @@ It is the same app as the Windows version: same interface, presets, humanize eng
 
 ## Install
 
-1. Download **MrTyper-macOS** from the latest [GitHub Actions build](../.github/workflows/build.yml) run's **Artifacts**, and open the `.dmg`.
+1. Download `MrTyper_…_universal.dmg` from the **[latest release](https://github.com/dyingfunds/MrTyper/releases/latest)** and open it. It's ready to use, so you don't need to build anything.
 2. Drag **MrTyper** into **Applications**.
 3. The app is ad-hoc signed, not notarised by Apple, so the first launch is blocked. Either:
    - right-click (or Control-click) MrTyper in Applications, choose **Open**, then **Open** again; or

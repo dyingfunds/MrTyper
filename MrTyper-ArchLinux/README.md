@@ -22,7 +22,27 @@ On Wayland, the reliable ways to stop a run are the **Stop** button, or **clicki
 
 ## Install
 
-### With the PKGBUILD (recommended)
+Ready-made packages are attached to every **[release](https://github.com/dyingfunds/MrTyper/releases/latest)**, so you don't need to compile anything.
+
+### Arch Linux (recommended)
+
+Download `mrtyper-…-x86_64.pkg.tar.zst` from the release, then:
+
+```bash
+sudo pacman -U mrtyper-*.pkg.tar.zst
+```
+
+This pulls in the runtime libraries automatically, then installs MrTyper with a desktop launcher and icons. Uninstall with `sudo pacman -R mrtyper`.
+
+### Other distributions
+
+From the same release:
+
+- **Ubuntu / Debian:** `sudo apt install ./MrTyper_*_amd64.deb`
+- **Fedora / openSUSE:** `sudo dnf install ./MrTyper-*.x86_64.rpm`
+- **Anything else:** make the AppImage executable with `chmod +x MrTyper_*.AppImage`, then run it.
+
+### Build the Arch package yourself
 
 ```bash
 git clone https://github.com/dyingfunds/MrTyper.git
@@ -42,11 +62,7 @@ makepkg -si
 - `libayatana-appindicator`
 - `libxkbcommon`
 
-It then builds MrTyper, runs the engine tests, and installs `mrtyper` with a desktop launcher and icons. Uninstall with `sudo pacman -R mrtyper`.
-
-### AppImage
-
-The [GitHub Actions build](../.github/workflows/build.yml) also produces an AppImage, a `.deb` and an `.rpm` for other distributions. Download them from the latest run's **Artifacts**.
+It then builds MrTyper, runs the engine tests, and installs `mrtyper` with a desktop launcher and icons.
 
 ## Build from source by hand
 
