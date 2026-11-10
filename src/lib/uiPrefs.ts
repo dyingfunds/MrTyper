@@ -4,7 +4,7 @@
  */
 export type Accent = "volt" | "ember" | "ice" | "orchid";
 
-/** "system" follows the Windows "Animation effects" switch. */
+/** "system" follows the operating system's reduced-motion preference. */
 export type MotionPref = "system" | "full" | "reduced";
 
 export interface UiPrefs {

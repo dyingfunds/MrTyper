@@ -24,6 +24,9 @@ pub struct FocusTarget {
     pid: i32,
 }
 
+/// Shown when the countdown ends and no target can be identified.
+pub const NO_TARGET_MESSAGE: &str = "macOS did not report a frontmost app. Click into the app you want to type into and try again.";
+
 static OWN_WINDOW_FOCUSED: AtomicBool = AtomicBool::new(false);
 
 /// Called from the window event loop whenever MrTyper gains or loses focus.

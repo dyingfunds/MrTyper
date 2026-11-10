@@ -72,7 +72,7 @@ export const Rail = memo(function Rail({
           <Moon size={16} strokeWidth={1.8} />
         )}
       </button>
-      <span className="rail-version">v2.0</span>
+      <span className="rail-version">v{__APP_VERSION__.split(".").slice(0, 2).join(".")}</span>
     </nav>
   );
 });

@@ -58,6 +58,7 @@ import {
   type MotionPref,
   type UiPrefs,
 } from "./lib/uiPrefs";
+import { PLATFORM } from "./lib/platform";
 import { characterCount, formatWpm } from "./lib/utils";
 import { PresetsPage } from "./pages/PresetsPage";
 import { SettingsPage } from "./pages/SettingsPage";
@@ -519,7 +520,7 @@ function App() {
       notify(
         "warning",
         "Couldn't change always-on-top",
-        "Windows did not accept the window setting.",
+        `${PLATFORM.osName} did not accept the window setting.`,
       );
     });
   }, [notify, ready, settings.alwaysOnTop]);
@@ -793,7 +794,7 @@ function App() {
         notify(
           "info",
           "Running in preview",
-          "In the desktop app this button hides MrTyper to the system tray.",
+          `In the desktop app this button hides MrTyper to the ${PLATFORM.hideTarget}.`,
         );
       }
     })();

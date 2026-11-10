@@ -5,6 +5,7 @@ import "@fontsource-variable/geist-mono";
 import "@fontsource-variable/bricolage-grotesque/wdth.css";
 import "./index.css";
 import App from "./App";
+import { PLATFORM } from "./lib/platform";
 import {
   REDUCED_MOTION_QUERY,
   applyAccent,
@@ -12,6 +13,8 @@ import {
   loadUiPrefs,
   shouldReduceMotion,
 } from "./lib/uiPrefs";
+
+document.documentElement.dataset.platform = PLATFORM.id;
 
 // Paint with the right accent and motion policy on the very first frame.
 const bootPrefs = loadUiPrefs();

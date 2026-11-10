@@ -447,10 +447,7 @@ fn run_session(
                 reason: FinishReason::Error,
                 elapsed_ms: 0,
                 wpm: 0.0,
-                message: Some(
-                    "MrTyper could not find a focused target window. Click into the app you want to type into and try again. (Some minimal window managers don't report focus; enable an EWMH-compliant one.)"
-                        .into(),
-                ),
+                message: Some(input::NO_TARGET_MESSAGE.into()),
             }
         }
     };

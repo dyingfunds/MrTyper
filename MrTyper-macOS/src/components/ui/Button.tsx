@@ -2,7 +2,7 @@ import type { LucideIcon } from "lucide-react";
 import type { ButtonHTMLAttributes, ReactNode } from "react";
 import { cn } from "../../lib/utils";
 
-type Variant = "default" | "primary" | "ghost" | "danger" | "danger-solid";
+type Variant = "default" | "primary" | "danger-solid";
 
 interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: Variant;

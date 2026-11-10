@@ -321,8 +321,10 @@ mod tests {
 
     #[test]
     fn hotkey_validation_rejects_duplicates_and_escape() {
-        let mut settings = AppSettings::default();
-        settings.hotkey_pause = "f8".into();
+        let settings = AppSettings {
+            hotkey_pause: "f8".into(),
+            ..AppSettings::default()
+        };
         assert!(settings.validate_hotkeys().is_err());
 
         let escape_settings = AppSettings {

@@ -4,6 +4,7 @@ import type { Phase } from "../types";
 import { cn, formatHotkey } from "../lib/utils";
 import { Keycap } from "./ui/Keycap";
 import { Logo } from "./Logo";
+import { PLATFORM } from "../lib/platform";
 
 interface TitleBarProps {
   phase: Phase;
@@ -104,6 +105,8 @@ export const TitleBar = memo(function TitleBar({
             </span>
           ) : null}
         </div>
+        {PLATFORM.nativeWindowControls ? null : (
+          <>
         <ControlButton label="Minimize" onClick={onMinimize}>
           <Minus size={15} strokeWidth={1.6} />
         </ControlButton>
@@ -127,6 +130,8 @@ export const TitleBar = memo(function TitleBar({
         <ControlButton label="Hide to tray" onClick={onClose} close>
           <X size={16} strokeWidth={1.6} />
         </ControlButton>
+          </>
+        )}
       </div>
     </header>
   );

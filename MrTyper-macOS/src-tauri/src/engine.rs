@@ -447,10 +447,7 @@ fn run_session(
                 reason: FinishReason::Error,
                 elapsed_ms: 0,
                 wpm: 0.0,
-                message: Some(
-                    "macOS did not report a frontmost app. Click into the app you want to type into and try again."
-                        .into(),
-                ),
+                message: Some(input::NO_TARGET_MESSAGE.into()),
             }
         }
     };

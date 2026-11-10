@@ -177,11 +177,4 @@ export function presetTraits(typing: TypingSettings): string[] {
   return traits;
 }
 
-export function smoothstep(value: number): number {
-  const x = clamp(value, 0, 1);
-  return x * x * (3 - 2 * x);
-}
 
-export function pluralize(count: number, singular: string, plural = `${singular}s`): string {
-  return count === 1 ? singular : plural;
-}

@@ -87,6 +87,11 @@ release/                   Prebuilt Windows installer + checksum
 MrTyper-macOS/             The macOS app (same layout as above)
 MrTyper-ArchLinux/         The Linux app, plus packaging/arch/PKGBUILD
 .github/workflows/         Builds and tests all three apps on real machines
+scripts/check-platform-sync.mjs  Keeps the three apps in sync (--fix copies shared files)
+scripts/cross-check.mjs    Type-checks the macOS/Linux apps from any machine
+scripts/bump-version.mjs   Sets the version of all three apps
+AGENTS.md                  Guide for contributors and AI assistants
+CHANGELOG.md               Release history
 ```
 
 ## Requirements

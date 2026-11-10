@@ -2,6 +2,7 @@ import { AnimatePresence, motion as m } from "framer-motion";
 import {
   AlertTriangle,
   Globe,
+  Info,
   Leaf,
   Monitor,
   Moon,
@@ -25,6 +26,7 @@ import { Slider } from "../components/ui/Slider";
 import { Toggle } from "../components/ui/Toggle";
 import { DEFAULT_SETTINGS } from "../lib/defaults";
 import { springSnappy, springSoft } from "../lib/motion";
+import { PLATFORM, type PlatformNote } from "../lib/platform";
 import { ACCENTS, type Accent, type MotionPref } from "../lib/uiPrefs";
 import {
   acceleratorFromKeyboardEvent,
@@ -168,6 +170,17 @@ function EngineFader({
   );
 }
 
+function PlatformNoteRow({ note }: { note: PlatformNote }) {
+  return (
+    <div className="setting-note">
+      <Info size={15} strokeWidth={1.9} />
+      <span>
+        <strong>{note.title}</strong> {note.body}
+      </span>
+    </div>
+  );
+}
+
 function HotkeyRecorder({
   label,
   value,
@@ -304,7 +317,7 @@ export const SettingsPage = memo(function SettingsPage({
           title="Appearance"
           description="How the instrument looks. Changes apply instantly."
         >
-          <Row title="Theme" description="Follow Windows, or pin one.">
+          <Row title="Theme" description={`Follow ${PLATFORM.osName}, or pin one.`}>
             <div className="segmented" role="radiogroup" aria-label="Theme">
               {themeOptions.map((option) => {
                 const Icon = option.icon;
@@ -337,10 +350,10 @@ export const SettingsPage = memo(function SettingsPage({
             description={
               motion === "system"
                 ? systemReducesMotion
-                  ? "Windows has animation effects turned off, so motion is reduced. Pick Full to animate anyway."
-                  : "Following Windows: animation effects are on."
+                  ? PLATFORM.motion.systemReduced
+                  : PLATFORM.motion.systemFull
                 : motion === "full"
-                  ? "Every transition plays, whatever Windows says."
+                  ? PLATFORM.motion.forcedFull
                   : "Movement is kept to simple fades."
             }
           >
@@ -423,6 +436,7 @@ export const SettingsPage = memo(function SettingsPage({
             otherValue={settings.hotkeyStart}
             onChange={(hotkeyPause) => onSettingsChange({ hotkeyPause })}
           />
+          {PLATFORM.shortcutsNote ? <PlatformNoteRow note={PLATFORM.shortcutsNote} /> : null}
         </Section>
 
         <Section
@@ -456,6 +470,7 @@ export const SettingsPage = memo(function SettingsPage({
               label="Stop when focus leaves target window"
             />
           </Row>
+          {PLATFORM.permissionNote ? <PlatformNoteRow note={PLATFORM.permissionNote} /> : null}
           <div className="setting-note is-warn">
             <AlertTriangle size={15} strokeWidth={1.9} />
             <span>
@@ -656,10 +671,10 @@ export const SettingsPage = memo(function SettingsPage({
           index={5}
           title="About"
           description="Small, private, precise."
-          badge={<span className="tag num">v2.0.0</span>}
+          badge={<span className="tag num">v{__APP_VERSION__}</span>}
         >
           <Row
-            title="MrTyper for Windows"
+            title={PLATFORM.productLabel}
             description="Tauri 2 with a native Rust engine. Keys are sent as real Unicode input."
           />
           <Row

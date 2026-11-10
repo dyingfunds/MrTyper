@@ -25,6 +25,18 @@ env:
   NODE_VERSION: "22"
 
 jobs:
+  sync:
+    name: Platform sync check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      # The macOS and Linux apps must match the root (Windows) app except for
+      # their platform-specific files. See scripts/check-platform-sync.mjs.
+      - run: node scripts/check-platform-sync.mjs
+
   windows:
     name: Windows
     runs-on: windows-latest
@@ -149,7 +161,7 @@ jobs:
   release:
     name: Publish release
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [windows, linux, arch, macos]
+    needs: [sync, windows, linux, arch, macos]
     runs-on: ubuntu-latest
     permissions:
       contents: write

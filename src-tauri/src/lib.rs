@@ -19,6 +19,11 @@ use crate::store::Store;
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        // Must be the first plugin. Launching MrTyper again brings back the
+        // running window, even when it is hidden in the tray or menu bar.
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            actions::reveal_window(app);
+        }))
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
                 .with_handler(|app, shortcut, event| {
@@ -55,8 +60,9 @@ pub fn run() {
             app.manage(Arc::clone(&store));
             app.manage(Arc::clone(&engine));
 
-            // Create the window explicitly so WebView2 always has a writable
-            // browser data directory, even in tightly managed environments.
+            // Create the window explicitly so the webview (WebView2 on Windows,
+            // WebKitGTK on Linux) always has a writable data directory, even in
+            // tightly managed environments.
             let window_config = app
                 .config()
                 .app
@@ -93,16 +99,26 @@ pub fn run() {
             Ok(())
         })
         .on_window_event(|window, event| {
+            if let WindowEvent::Focused(focused) = event {
+                input::set_own_window_focused(*focused);
+            }
             if let WindowEvent::CloseRequested { api, .. } = event {
-                // Closing the writing room sends MrTyper to the notification
-                // area; the tray's Quit item performs a real shutdown.
+                // Closing the writing room hides MrTyper to the tray (menu bar on
+                // macOS); the tray menu's Quit item performs a real shutdown.
                 api.prevent_close();
                 actions::save_window_bounds(window.app_handle());
                 let _ = window.hide();
             }
         })
-        .run(tauri::generate_context!())
-        .expect("error while running MrTyper");
+        .build(tauri::generate_context!())
+        .expect("error while building MrTyper")
+        .run(|_app, _event| {
+            // macOS: clicking the Dock icon brings back the hidden window.
+            #[cfg(target_os = "macos")]
+            if let tauri::RunEvent::Reopen { .. } = _event {
+                actions::reveal_window(_app);
+            }
+        });
 }
 
 fn restore_window_bounds(window: &tauri::WebviewWindow, store: &Store) {
@@ -117,6 +133,8 @@ fn restore_window_bounds(window: &tauri::WebviewWindow, store: &Store) {
     let _ = window.set_position(tauri::PhysicalPosition::new(bounds.x, bounds.y));
 }
 
+/// Windows 11 Mica (Acrylic on Windows 10) behind the window. Other platforms
+/// paint an opaque background in CSS.
 #[allow(unused_variables)]
 fn apply_backdrop(window: &tauri::WebviewWindow) {
     #[cfg(target_os = "windows")]
@@ -129,8 +147,10 @@ fn apply_backdrop(window: &tauri::WebviewWindow) {
     }
 }
 
-/// WebView2 needs a real writable profile directory. Prefer the app's local
+/// The webview needs a real writable profile directory. Prefer the app's local
 /// data folder, but keep a temp-directory fallback for locked-down machines.
+/// The folder keeps its original `webview2` name on every platform so existing
+/// Windows installs keep their stored UI preferences.
 fn webview_data_directory(app: &tauri::App) -> std::io::Result<std::path::PathBuf> {
     let mut candidates = Vec::new();
     if let Some(path) = std::env::var_os("MRTYPER_WEBVIEW_DIR") {
@@ -150,6 +170,6 @@ fn webview_data_directory(app: &tauri::App) -> std::io::Result<std::path::PathBu
     }
 
     Err(last_error.unwrap_or_else(|| {
-        std::io::Error::other("No suitable WebView2 data directory was available.")
+        std::io::Error::other("No suitable webview data directory was available.")
     }))
 }

@@ -26,7 +26,7 @@ import { Slider } from "../components/ui/Slider";
 import { Toggle } from "../components/ui/Toggle";
 import { DEFAULT_SETTINGS } from "../lib/defaults";
 import { springSnappy, springSoft } from "../lib/motion";
-import { PLATFORM } from "../lib/platform";
+import { PLATFORM, type PlatformNote } from "../lib/platform";
 import { ACCENTS, type Accent, type MotionPref } from "../lib/uiPrefs";
 import {
   acceleratorFromKeyboardEvent,
@@ -166,6 +166,17 @@ function EngineFader({
       <span className="engine-fader-label">{label}</span>
       {children}
       <span className="engine-fader-value">{value}</span>
+    </div>
+  );
+}
+
+function PlatformNoteRow({ note }: { note: PlatformNote }) {
+  return (
+    <div className="setting-note">
+      <Info size={15} strokeWidth={1.9} />
+      <span>
+        <strong>{note.title}</strong> {note.body}
+      </span>
     </div>
   );
 }
@@ -339,10 +350,10 @@ export const SettingsPage = memo(function SettingsPage({
             description={
               motion === "system"
                 ? systemReducesMotion
-                  ? "Your desktop asks for reduced motion, so motion is reduced. Pick Full to animate anyway."
-                  : "Following your desktop: animations are on."
+                  ? PLATFORM.motion.systemReduced
+                  : PLATFORM.motion.systemFull
                 : motion === "full"
-                  ? "Every transition plays, whatever your desktop says."
+                  ? PLATFORM.motion.forcedFull
                   : "Movement is kept to simple fades."
             }
           >
@@ -425,15 +436,7 @@ export const SettingsPage = memo(function SettingsPage({
             otherValue={settings.hotkeyStart}
             onChange={(hotkeyPause) => onSettingsChange({ hotkeyPause })}
           />
-          <div className="setting-note">
-            <Info size={15} strokeWidth={1.9} />
-            <span>
-              <strong>X11 sessions get system-wide shortcuts.</strong> On Wayland,
-              desktops only deliver them while an X11 (XWayland) app has focus,
-              so use the Stop button, or click back into MrTyper, which stops a
-              running session instantly.
-            </span>
-          </div>
+          {PLATFORM.shortcutsNote ? <PlatformNoteRow note={PLATFORM.shortcutsNote} /> : null}
         </Section>
 
         <Section
@@ -467,6 +470,7 @@ export const SettingsPage = memo(function SettingsPage({
               label="Stop when focus leaves target window"
             />
           </Row>
+          {PLATFORM.permissionNote ? <PlatformNoteRow note={PLATFORM.permissionNote} /> : null}
           <div className="setting-note is-warn">
             <AlertTriangle size={15} strokeWidth={1.9} />
             <span>
@@ -667,7 +671,7 @@ export const SettingsPage = memo(function SettingsPage({
           index={5}
           title="About"
           description="Small, private, precise."
-          badge={<span className="tag num">v2.0.0</span>}
+          badge={<span className="tag num">v{__APP_VERSION__}</span>}
         >
           <Row
             title={PLATFORM.productLabel}

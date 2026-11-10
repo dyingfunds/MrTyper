@@ -20,7 +20,7 @@ use crate::store::Store;
 pub fn run() {
     tauri::Builder::default()
         // Must be the first plugin. Launching MrTyper again brings back the
-        // running window, even when it is hidden and the menu bar icon is out of sight.
+        // running window, even when it is hidden in the tray or menu bar.
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             actions::reveal_window(app);
         }))
@@ -60,8 +60,9 @@ pub fn run() {
             app.manage(Arc::clone(&store));
             app.manage(Arc::clone(&engine));
 
-            // Create the window explicitly from the configuration so the
-            // saved bounds can be applied before it is first shown.
+            // Create the window explicitly so the webview (WebView2 on Windows,
+            // WebKitGTK on Linux) always has a writable data directory, even in
+            // tightly managed environments.
             let window_config = app
                 .config()
                 .app
@@ -85,6 +86,7 @@ pub fn run() {
                 })?;
 
             restore_window_bounds(&window, &store);
+            apply_backdrop(&window);
 
             if let Err(error) = tray::create(app) {
                 // Some locked-down Windows sessions do not expose a
@@ -101,8 +103,8 @@ pub fn run() {
                 input::set_own_window_focused(*focused);
             }
             if let WindowEvent::CloseRequested { api, .. } = event {
-                // Closing the writing room hides MrTyper to the menu bar; the
-                // tray menu's Quit item performs a real shutdown.
+                // Closing the writing room hides MrTyper to the tray (menu bar on
+                // macOS); the tray menu's Quit item performs a real shutdown.
                 api.prevent_close();
                 actions::save_window_bounds(window.app_handle());
                 let _ = window.hide();
@@ -110,10 +112,11 @@ pub fn run() {
         })
         .build(tauri::generate_context!())
         .expect("error while building MrTyper")
-        .run(|app, event| {
-            // Closing the window only hides it; the Dock icon brings it back.
-            if let tauri::RunEvent::Reopen { .. } = event {
-                actions::reveal_window(app);
+        .run(|_app, _event| {
+            // macOS: clicking the Dock icon brings back the hidden window.
+            #[cfg(target_os = "macos")]
+            if let tauri::RunEvent::Reopen { .. } = _event {
+                actions::reveal_window(_app);
             }
         });
 }
@@ -130,17 +133,33 @@ fn restore_window_bounds(window: &tauri::WebviewWindow, store: &Store) {
     let _ = window.set_position(tauri::PhysicalPosition::new(bounds.x, bounds.y));
 }
 
-/// The webview needs a writable profile directory. Prefer the app's local
+/// Windows 11 Mica (Acrylic on Windows 10) behind the window. Other platforms
+/// paint an opaque background in CSS.
+#[allow(unused_variables)]
+fn apply_backdrop(window: &tauri::WebviewWindow) {
+    #[cfg(target_os = "windows")]
+    {
+        use window_vibrancy::{apply_acrylic, apply_mica};
+
+        if apply_mica(window, None).is_err() {
+            let _ = apply_acrylic(window, Some((10, 13, 27, 190)));
+        }
+    }
+}
+
+/// The webview needs a real writable profile directory. Prefer the app's local
 /// data folder, but keep a temp-directory fallback for locked-down machines.
+/// The folder keeps its original `webview2` name on every platform so existing
+/// Windows installs keep their stored UI preferences.
 fn webview_data_directory(app: &tauri::App) -> std::io::Result<std::path::PathBuf> {
     let mut candidates = Vec::new();
     if let Some(path) = std::env::var_os("MRTYPER_WEBVIEW_DIR") {
         candidates.push(std::path::PathBuf::from(path));
     }
     if let Ok(local_data) = app.path().app_local_data_dir() {
-        candidates.push(local_data.join("webview"));
+        candidates.push(local_data.join("webview2"));
     }
-    candidates.push(std::env::temp_dir().join("mrtyper-webview"));
+    candidates.push(std::env::temp_dir().join("mrtyper-webview2"));
 
     let mut last_error = None;
     for candidate in candidates {
@@ -151,6 +170,6 @@ fn webview_data_directory(app: &tauri::App) -> std::io::Result<std::path::PathBu
     }
 
     Err(last_error.unwrap_or_else(|| {
-        std::io::Error::other("No suitable WebView2 data directory was available.")
+        std::io::Error::other("No suitable webview data directory was available.")
     }))
 }

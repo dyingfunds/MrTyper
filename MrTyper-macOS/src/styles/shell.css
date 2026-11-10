@@ -481,6 +481,10 @@
   }
 }
 
+/* ------------------------------------------------------------------ */
+/*  Per-platform window chrome (see src/lib/platform.ts)               */
+/* ------------------------------------------------------------------ */
+
 /* macOS draws the window frame, corners and traffic lights itself. */
 :root[data-platform="macos"] .frame::after {
   display: none;
@@ -493,4 +497,9 @@
 
 :root[data-platform="macos"] .titlebar-right {
   padding-right: 14px;
+}
+
+/* Undecorated windows are square on Linux compositors. */
+:root[data-platform="linux"] .frame::after {
+  border-radius: 0;
 }

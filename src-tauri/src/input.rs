@@ -3,11 +3,30 @@
 //! Text is injected as UTF-16 code units through `SendInput` with
 //! `KEYEVENTF_UNICODE`, which bypasses the active keyboard layout and lets
 //! MrTyper type accents, CJK, surrogate-pair emoji, and RTL scripts.
+//!
+//! Every platform's input module exposes the same API, so engine.rs is
+//! identical across the Windows, macOS and Linux apps:
+//! `prepare`, `send_char`, `send_backspace`, `foreground_target`,
+//! `is_own_process`, `set_own_window_focused` and `NO_TARGET_MESSAGE`.
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct FocusTarget {
     raw: isize,
 }
+
+/// Shown when the countdown ends and no target can be identified.
+pub const NO_TARGET_MESSAGE: &str =
+    "Windows could not find a focused target window. Click into the app you want to type into and try again.";
+
+/// `SendInput` needs no connection or permission, so there is nothing to
+/// open before a session. Kept for API parity with the macOS and Linux apps.
+pub fn prepare() -> Result<Option<String>, String> {
+    Ok(None)
+}
+
+/// Windows reads the foreground window directly, so MrTyper's own focus does
+/// not need tracking. Kept for API parity with the macOS and Linux apps.
+pub fn set_own_window_focused(_focused: bool) {}
 
 #[cfg(target_os = "windows")]
 mod platform {

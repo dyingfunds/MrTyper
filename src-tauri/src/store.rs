@@ -292,8 +292,10 @@ mod tests {
         let preset = store
             .add_preset("Test cadence", TypingSettings::default())
             .expect("preset should save");
-        let mut settings = AppSettings::default();
-        settings.theme = "dark".into();
+        let settings = AppSettings {
+            theme: "dark".into(),
+            ..AppSettings::default()
+        };
         store
             .save_session(settings, "Hello, 世界 👋".into())
             .expect("session should save");

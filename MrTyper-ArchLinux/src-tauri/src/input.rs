@@ -34,6 +34,9 @@ const WAYLAND_OWN_WINDOW: u64 = u64::MAX;
 /// A display name that can never connect, used to switch a backend off.
 const DISABLED_DISPLAY: &str = "mrtyper-backend-disabled";
 
+/// Shown when the countdown ends and no target can be identified.
+pub const NO_TARGET_MESSAGE: &str = "MrTyper could not find a focused target window. Click into the app you want to type into and try again. (Some minimal window managers don't report focus; enable an EWMH-compliant one.)";
+
 static OWN_WINDOW_FOCUSED: AtomicBool = AtomicBool::new(false);
 
 /// Called from the window event loop whenever MrTyper gains or loses focus.

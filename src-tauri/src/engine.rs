@@ -398,6 +398,26 @@ fn run_session(
     text: &str,
     settings: &AppSettings,
 ) -> SessionOutcome {
+    // Open the keyboard backend before the countdown, so a missing permission
+    // or display backend is reported before the user clicks away.
+    match input::prepare() {
+        Ok(Some(notice)) => {
+            let _ = app.emit(
+                "mrtyper-toast",
+                serde_json::json!({ "kind": "warning", "title": "Limited typing mode", "message": notice }),
+            );
+        }
+        Ok(None) => {}
+        Err(message) => {
+            return SessionOutcome {
+                reason: FinishReason::Error,
+                elapsed_ms: 0,
+                wpm: 0.0,
+                message: Some(message),
+            };
+        }
+    }
+
     if settings.stop_on_esc {
         if let Err(error) = hotkeys::register_escape(app) {
             return SessionOutcome {
@@ -427,10 +447,7 @@ fn run_session(
                 reason: FinishReason::Error,
                 elapsed_ms: 0,
                 wpm: 0.0,
-                message: Some(
-                    "Windows could not find a focused target window. Click into the app you want to type into and try again."
-                        .into(),
-                ),
+                message: Some(input::NO_TARGET_MESSAGE.into()),
             }
         }
     };
