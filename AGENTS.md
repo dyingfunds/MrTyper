@@ -167,7 +167,7 @@ Nobody has yet used the macOS or Linux apps on real hardware beyond the CI build
   - pnpm isn't on PATH on the original dev machine; use `npx -y pnpm@10.15.0`.
 - **The window can't scroll the deck on short screens.** A compact layout kicks in under 920 px of window height and the dial shrinks under 760 px (`styles/type.css`). Re-check at 980×700 after layout changes.
 - **Line endings:** `.gitattributes` stores LF (CRLF for `.cmd`). Some editors on Windows write CRLF; that's fine, git normalises it.
-- **Commits** are authored as `dyingfunds <dyingfunds@users.noreply.github.com>`, set in the repo-local git config. Never commit personal email addresses or local paths.
+- **Commits** are authored as `dyingfunds <dyingfunds@users.noreply.github.com>`, set in the repo-local git config. **Don't add `Co-Authored-By` trailers or any AI attribution**: the owner removed them so the GitHub Contributors list shows only them. Never commit personal email addresses or local paths.
 
 ## Ideas not yet done
 
