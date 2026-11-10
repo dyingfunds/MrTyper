@@ -106,9 +106,19 @@ jobs:
     container: archlinux:latest
     steps:
       - name: Install build dependencies
+        # Arch mirrors occasionally fail mid-sync, so retry before giving up.
         run: |
-          pacman -Syu --noconfirm --needed base-devel git rust nodejs pnpm \
-            webkit2gtk-4.1 gtk3 libayatana-appindicator libxkbcommon hicolor-icon-theme
+          for attempt in 1 2 3; do
+            if pacman -Syu --noconfirm --needed --disable-download-timeout \
+                base-devel git rust nodejs pnpm \
+                webkit2gtk-4.1 gtk3 libayatana-appindicator libxkbcommon hicolor-icon-theme; then
+              exit 0
+            fi
+            echo "::warning::pacman failed (attempt $attempt of 3); retrying in 20 seconds"
+            sleep 20
+          done
+          echo "::error::Could not install the Arch build dependencies after 3 attempts"
+          exit 1
       - uses: actions/checkout@v4
       - name: Build the package with makepkg
         # makepkg refuses to run as root, so build as an unprivileged user.
