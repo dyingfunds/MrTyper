@@ -90,6 +90,8 @@ cargo test --manifest-path src-tauri/Cargo.toml
 
 - **Closing the window hides MrTyper to the system tray.** GNOME hides tray icons unless you install the *AppIndicator and KStatusNotifierItem Support* extension. Without it, simply launch MrTyper again: the running instance comes back.
 - **Esc is the emergency stop** while a session runs (X11). It is registered system-wide only during the session.
+- **Script commands** such as `{{bold}}`, `{{h1}}` and `{{bigger}}` press the Google Docs shortcuts. The full list is in the [main README](../README.md#script-commands-google-docs-formatting).
+- **Updates.** The AppImage updates itself: when a new version is out, MrTyper offers to install it and restarts. The Arch, `.deb` and `.rpm` packages belong to your package manager, so MrTyper only tells you about the new version and opens the download page.
 - Settings, presets and your script are saved to `~/.config/com.mrtyper.desktop/mrtyper.json`.
 
 ## Troubleshooting

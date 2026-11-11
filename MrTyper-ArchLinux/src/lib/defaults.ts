@@ -18,6 +18,21 @@ export const DEFAULT_TYPING: TypingSettings = {
   typoChance: 2.5,
   fatigueEnabled: false,
   fatigueDrift: 18,
+  typoNeighbor: true,
+  typoSwap: true,
+  typoDouble: true,
+  typoSkip: true,
+  lateNoticeChance: 20,
+  typoReactionMs: 140,
+  backspaceMs: 80,
+  paragraphEnabled: true,
+  paragraphExtraMs: 1100,
+  wordPauseEnabled: false,
+  wordPauseMs: 60,
+  capitalEnabled: true,
+  capitalExtraMs: 60,
+  warmupEnabled: false,
+  warmupChars: 160,
 };
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -28,6 +43,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   stopOnFocusLoss: true,
   hotkeyStart: "F8",
   hotkeyPause: "F9",
+  scriptCommands: true,
+  checkUpdates: true,
 };
 
 export const PRESET_BLUEPRINTS: Array<{
@@ -137,7 +154,33 @@ export function normalizeTyping(value: Partial<TypingSettings> | undefined): Typ
     burstEnabled: Boolean(merged.burstEnabled),
     typosEnabled: Boolean(merged.typosEnabled),
     fatigueEnabled: Boolean(merged.fatigueEnabled),
+    ...typoKinds(merged),
+    lateNoticeChance: clamp(round(merged.lateNoticeChance), 0, 60),
+    typoReactionMs: clamp(round(merged.typoReactionMs), 40, 1500),
+    backspaceMs: clamp(round(merged.backspaceMs), 30, 400),
+    paragraphEnabled: Boolean(merged.paragraphEnabled),
+    paragraphExtraMs: clamp(round(merged.paragraphExtraMs), 100, 6000),
+    wordPauseEnabled: Boolean(merged.wordPauseEnabled),
+    wordPauseMs: clamp(round(merged.wordPauseMs), 5, 500),
+    capitalEnabled: Boolean(merged.capitalEnabled),
+    capitalExtraMs: clamp(round(merged.capitalExtraMs), 5, 400),
+    warmupEnabled: Boolean(merged.warmupEnabled),
+    warmupChars: clamp(round(merged.warmupChars), 20, 1000),
   };
+}
+
+/** At least one kind of typo stays on, as in the engine. */
+function typoKinds(typing: TypingSettings) {
+  const kinds = {
+    typoNeighbor: Boolean(typing.typoNeighbor),
+    typoSwap: Boolean(typing.typoSwap),
+    typoDouble: Boolean(typing.typoDouble),
+    typoSkip: Boolean(typing.typoSkip),
+  };
+  if (!kinds.typoNeighbor && !kinds.typoSwap && !kinds.typoDouble && !kinds.typoSkip) {
+    kinds.typoNeighbor = true;
+  }
+  return kinds;
 }
 
 export function normalizeSettings(value: Partial<AppSettings> | undefined): AppSettings {
@@ -155,6 +198,8 @@ export function normalizeSettings(value: Partial<AppSettings> | undefined): AppS
     stopOnFocusLoss: Boolean(merged.stopOnFocusLoss),
     hotkeyStart: validHotkey(merged.hotkeyStart) ? merged.hotkeyStart : "F8",
     hotkeyPause: validHotkey(merged.hotkeyPause) ? merged.hotkeyPause : "F9",
+    scriptCommands: Boolean(merged.scriptCommands),
+    checkUpdates: Boolean(merged.checkUpdates),
   };
 }
 

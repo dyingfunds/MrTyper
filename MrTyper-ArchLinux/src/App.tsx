@@ -12,6 +12,7 @@ import { Logo } from "./components/Logo";
 import { Rail, TAB_ORDER } from "./components/Rail";
 import { TitleBar } from "./components/TitleBar";
 import { ToastHost } from "./components/ToastHost";
+import { UpdateBanner } from "./components/UpdateBanner";
 import {
   bootstrap,
   deletePreset,
@@ -50,6 +51,7 @@ import { pageEnter, pageExit, springSoft } from "./lib/motion";
 import {
   REDUCED_MOTION_QUERY,
   applyAccent,
+  applyEditorLook,
   applyReducedMotion,
   loadUiPrefs,
   saveUiPrefs,
@@ -59,6 +61,13 @@ import {
   type UiPrefs,
 } from "./lib/uiPrefs";
 import { PLATFORM } from "./lib/platform";
+import {
+  INITIAL_UPDATE_STATE,
+  checkForUpdate,
+  installUpdate,
+  openReleasePage,
+  type UpdateState,
+} from "./lib/updates";
 import { characterCount, formatWpm } from "./lib/utils";
 import { PresetsPage } from "./pages/PresetsPage";
 import { SettingsPage } from "./pages/SettingsPage";
@@ -141,6 +150,8 @@ function App() {
   const [systemDark, setSystemDark] = useState(() =>
     window.matchMedia("(prefers-color-scheme: dark)").matches,
   );
+  const [update, setUpdate] = useState<UpdateState>(INITIAL_UPDATE_STATE);
+  const [updateDismissed, setUpdateDismissed] = useState(false);
 
   const skipSettingsSave = useRef(true);
   const skipTextSave = useRef(true);
@@ -162,7 +173,7 @@ function App() {
 
   const resolvedTheme: ResolvedTheme =
     settings.theme === "system" ? (systemDark ? "dark" : "light") : settings.theme;
-  const { accent, motion: motionPref } = uiPrefs;
+  const { accent, motion: motionPref, editorFont, editorSize, showScope } = uiPrefs;
   const reduceMotion = shouldReduceMotion(motionPref, systemReducesMotion);
   const paletteKey = `${resolvedTheme}:${accent}`;
 
@@ -496,6 +507,10 @@ function App() {
     applyReducedMotion(reduceMotion);
   }, [reduceMotion]);
 
+  useLayoutEffect(() => {
+    applyEditorLook(editorFont, editorSize);
+  }, [editorFont, editorSize]);
+
   useEffect(() => {
     saveUiPrefs(uiPrefs);
   }, [uiPrefs]);
@@ -584,6 +599,74 @@ function App() {
       cleanupMaximize?.();
     };
   }, [ready]);
+
+  /* ---------------------------------------------------------------- */
+  /* Updates                                                           */
+  /* ---------------------------------------------------------------- */
+
+  const runUpdateCheck = useCallback(async (manual: boolean) => {
+    setUpdate((current) =>
+      current.status === "downloading" || current.status === "installed"
+        ? current
+        : { status: "checking" },
+    );
+    const result = await checkForUpdate();
+    setUpdate((current) =>
+      current.status === "downloading" || current.status === "installed" ? current : result,
+    );
+    if (result.status === "available") setUpdateDismissed(false);
+    if (manual && result.status === "current") {
+      notify("success", "Up to date", `MrTyper ${__APP_VERSION__} is the latest version.`);
+    }
+    // A failed check on launch stays quiet: no network is not a problem.
+    if (manual && result.status === "error") {
+      notify("warning", "Couldn't check for updates", result.message);
+    }
+  }, [notify]);
+
+  const checkUpdatesOnLaunch = useRef(true);
+  useEffect(() => {
+    if (!ready || !checkUpdatesOnLaunch.current) return;
+    checkUpdatesOnLaunch.current = false;
+    if (!isTauri || !settingsRef.current.checkUpdates) return;
+    // Let the window settle first; the check never blocks anything.
+    const timer = setTimeout(() => void runUpdateCheck(false), 2500);
+    return () => clearTimeout(timer);
+  }, [ready, runUpdateCheck]);
+
+  const handleCheckUpdates = useCallback(() => {
+    void runUpdateCheck(true);
+  }, [runUpdateCheck]);
+
+  const handleInstallUpdate = useCallback(() => {
+    const current = update;
+    if (current.status !== "available") return;
+    if (!current.canInstall) {
+      void openReleasePage().catch((error) => {
+        notify("error", "Couldn't open the download page", friendlyError(error));
+      });
+      return;
+    }
+    if (enginePhaseRef.current !== "idle") {
+      notify("warning", "A session is running", "Update once it has finished.");
+      return;
+    }
+    const { version } = current;
+    setUpdate({ status: "downloading", version, percent: null });
+    void (async () => {
+      try {
+        await installUpdate((percent) => {
+          setUpdate({ status: "downloading", version, percent });
+        });
+        setUpdate({ status: "installed", version });
+      } catch (error) {
+        setUpdate({ status: "available", version, canInstall: true });
+        notify("error", "The update didn't install", friendlyError(error));
+      }
+    })();
+  }, [notify, update]);
+
+  const dismissUpdate = useCallback(() => setUpdateDismissed(true), []);
 
   /* ---------------------------------------------------------------- */
   /* Actions                                                           */
@@ -685,6 +768,10 @@ function App() {
 
   const handleMotionChange = useCallback((next: MotionPref) => {
     setUiPrefs((current) => ({ ...current, motion: next }));
+  }, []);
+
+  const handleUiPrefsChange = useCallback((patch: Partial<UiPrefs>) => {
+    setUiPrefs((current) => ({ ...current, ...patch }));
   }, []);
 
   const handleToggleTheme = useCallback(() => {
@@ -848,6 +935,7 @@ function App() {
                       engine={engine}
                       lastRun={lastRun}
                       paletteKey={paletteKey}
+                      showScope={showScope}
                       onTextChange={setText}
                       onTypingChange={updateTyping}
                       onStart={handleStart}
@@ -875,9 +963,16 @@ function App() {
                       running={isRunning}
                       accent={accent}
                       motion={motionPref}
+                      editorFont={editorFont}
+                      editorSize={editorSize}
+                      showScope={showScope}
                       systemReducesMotion={systemReducesMotion}
+                      update={update}
                       onAccentChange={handleAccentChange}
                       onMotionChange={handleMotionChange}
+                      onUiPrefsChange={handleUiPrefsChange}
+                      onCheckUpdates={handleCheckUpdates}
+                      onInstallUpdate={handleInstallUpdate}
                       onTypingChange={updateTyping}
                       onSettingsChange={updateSettings}
                       onResetSettings={handleResetSettings}
@@ -919,6 +1014,15 @@ function App() {
           stopOnEsc={settings.stopOnEsc}
           onCancel={handleStop}
         />
+        {ready ? (
+          <UpdateBanner
+            update={update}
+            dismissed={updateDismissed}
+            busy={isRunning}
+            onInstall={handleInstallUpdate}
+            onDismiss={dismissUpdate}
+          />
+        ) : null}
         <ToastHost toasts={toasts} onDismiss={dismissToast} />
         <div id="overlay-root" />
       </div>

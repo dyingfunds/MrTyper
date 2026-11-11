@@ -13,6 +13,8 @@
 | **Arch Linux** | `mrtyper-…-x86_64.pkg.tar.zst` | [MrTyper-ArchLinux](MrTyper-ArchLinux/README.md) |
 | **Ubuntu, Debian, Fedora, any Linux** | `.deb`, `.rpm` or `.AppImage` | [MrTyper-ArchLinux](MrTyper-ArchLinux/README.md) |
 
+**macOS:** MrTyper isn't notarised by Apple, so macOS blocks the first launch. On macOS 15 Sequoia and later, allow it with **System Settings → Privacy & Security → Open Anyway** (right-click → Open no longer works there). The [macOS guide](MrTyper-macOS/README.md#install) has the full steps.
+
 All three share the same interface, engine, presets and settings format. Each platform's source lives in its own self-contained folder: the repository root for Windows, [MrTyper-macOS/](MrTyper-macOS/), and [MrTyper-ArchLinux/](MrTyper-ArchLinux/). The rest of this README describes the Windows app.
 
 ![MrTyper Type screen in dark mode](docs/preview-type-dark.png)
@@ -28,12 +30,18 @@ All three share the same interface, engine, presets and settings format. Each pl
 
 Most text expanders paste. MrTyper *performs*. Every character travels through the Windows `SendInput` API with `KEYEVENTF_UNICODE`, so accents, right-to-left scripts, CJK, and emoji arrive as real keystrokes. A randomized timing plan gives each run its own cadence, while the engine remains fully interruptible.
 
-Everything lives on your machine. There are no accounts, analytics, network calls, or cloud sync.
+Everything lives on your machine. There are no accounts, analytics, or cloud sync. The only network request is an optional check for new versions.
 
 ## Features
 
 - **Any window, any text.** Unicode input through `SendInput` / `KEYEVENTF_UNICODE`, including emoji and multi-script text.
 - **Human cadence.** A dual-handle WPM range (10–300), keystroke randomness, punctuation and line-break pauses, thinking pauses, burst typing, QWERTY typo-and-correct behavior, and optional fatigue drift.
+- **Formatting while it types.** `{{bold}}`, `{{h1}}`, `{{bigger}}`, `{{bullets}}` and other commands in a script press the Google Docs shortcuts instead of being typed, and `{{pause 2}}` holds still. See [Script commands](#script-commands-google-docs-formatting).
+- **More kinds of mistake.** Typos can be a neighbouring key, swapped letters, a doubled letter or a skipped one. Some are only noticed a few keys later and fixed with several backspaces. The pause before fixing and the backspace speed are adjustable.
+- **More kinds of pause.** Paragraph pauses at blank lines, small gaps between words, extra reach time before capitals, and a warm-up that starts slow.
+- **Type any value.** Every slider's number can be clicked and typed into. Out-of-range values snap to the nearest limit.
+- **Your editor.** Choose the script font (mono, sans or serif) and text size, and hide the cadence scope if you prefer a calmer screen.
+- **Updates when you say so.** MrTyper checks GitHub for a new version when it opens and offers to install it. Nothing installs until you click Update, and the check can be turned off.
 - **Head start.** A 1–30 second animated countdown lets you click into the target application.
 - **Global controls.** Start/stop and pause/resume hotkeys work while MrTyper is in the background. Both are rebindable.
 - **Live stage.** While a session runs, the script inks in character by character behind a glowing caret that flashes red on typos. A tachometer needle follows the real effective WPM, and a cadence scope records every keystroke, typo, and correction.
@@ -117,7 +125,7 @@ For UI-only work, run `pnpm dev` in a browser. The app automatically uses a loca
 
 A self-contained Windows x64 installer is included in the repository:
 
-**[release/MrTyper_2.0.0_x64-setup.exe](release/MrTyper_2.0.0_x64-setup.exe)**
+**[release/MrTyper_2.1.0_x64-setup.exe](release/MrTyper_2.1.0_x64-setup.exe)**
 
 1. Verify the file against [release/SHA256SUMS.txt](release/SHA256SUMS.txt).
 2. Double-click the setup and approve Windows SmartScreen if you trust the build.
@@ -138,9 +146,9 @@ This runs [scripts/build-release.mjs](scripts/build-release.mjs), which wraps `t
 Two useful artifacts are produced:
 
 - `src-tauri/target/release/mrtyper.exe` — the standalone app.
-- `src-tauri/target/release/bundle/nsis/MrTyper_2.0.0_x64-setup.exe` — the single NSIS installer.
+- `src-tauri/target/release/bundle/nsis/MrTyper_2.1.0_x64-setup.exe` — the single NSIS installer.
 
-The installer is configured for a per-user install (`currentUser`) and does not require a separate runtime installer. If WebView2 is missing, Tauri's silent bootstrapper downloads it during installation. The binary is unsigned by default; Windows SmartScreen or antivirus heuristics may warn about or quarantine the NSIS installer. The application is built entirely from the source in this repository and makes no network requests at runtime. For distribution, sign the executable and installer with a code-signing certificate.
+The installer is configured for a per-user install (`currentUser`) and does not require a separate runtime installer. If WebView2 is missing, Tauri's silent bootstrapper downloads it during installation. The binary is unsigned by default; Windows SmartScreen or antivirus heuristics may warn about or quarantine the NSIS installer. The application is built entirely from the source in this repository; at runtime its only network request is the optional update check. For distribution, sign the executable and installer with a code-signing certificate.
 
 ### Rebuild the icons
 
@@ -161,6 +169,38 @@ The first script regenerates the PNG sizes and multi-resolution `.ico` used by t
 4. During the countdown, click into the app where the text should land.
 5. MrTyper types the plan into that window. <kbd>F9</kbd> pauses/resumes; <kbd>F8</kbd> stops.
 6. <kbd>Esc</kbd> is the emergency stop. While a session is live, MrTyper registers Esc globally only for this purpose; it is released afterwards.
+
+### Script commands (Google Docs formatting)
+
+Write a command in double braces and MrTyper presses the shortcut instead of typing it. They're the Google Docs shortcuts, so formatting appears as the text is typed:
+
+```text
+{{h1}}Weekly notes{{normal}}
+This week was {{bold}}busy{{bold}}, so {{italic}}everything{{italic}} slipped.{{pause 2}}
+{{bullets}}First item
+Second item
+```
+
+| Command | Does | Shortcut |
+| --- | --- | --- |
+| `{{bold}}` `{{italic}}` `{{underline}}` `{{strike}}` | Turn the style on, or off the second time | Ctrl+B / I / U, Alt+Shift+5 |
+| `{{bigger}}` `{{smaller}}` | Font size up or down one step | Ctrl+Shift+. / , |
+| `{{h1}}` … `{{h6}}`, `{{normal}}` | Heading level, or back to normal text | Ctrl+Alt+1 … 6, Ctrl+Alt+0 |
+| `{{bullets}}` `{{numbers}}` `{{checklist}}` | Lists | Ctrl+Shift+8 / 7 / 9 |
+| `{{center}}` `{{alignleft}}` `{{alignright}}` `{{justify}}` | Alignment | Ctrl+Shift+E / L / R / J |
+| `{{indent}}` `{{outdent}}` `{{pagebreak}}` `{{clear}}` | Indent, page break, clear formatting | Ctrl+] / [, Ctrl+Enter, Ctrl+\ |
+| `{{sup}}` `{{sub}}` `{{undo}}` `{{redo}}` | Superscript, subscript, undo, redo | Ctrl+. / , / Z / Y |
+| `{{pause 2}}` `{{pause 1.5s}}` `{{wait 400ms}}` | Hold still (up to 60 s) | — |
+
+Any other shortcut works too: `{{ctrl+shift+k}}`, `{{alt+f4}}`, `{{mod+b}}` (`mod` is Ctrl, or ⌘ on a Mac), and lone keys such as `{{enter}}`, `{{tab}}`, `{{left}}` or `{{f5}}`. Escape is never sent, because it is MrTyper's emergency stop. Names ignore case, spaces and dashes (`{{Font Size Up}}` works). Anything in double braces that isn't a command is typed as written, and **Setup → Script commands** can turn commands off entirely. The **{ }** button above the script inserts any command at the cursor.
+
+On macOS the same commands send the Mac shortcuts (⌘ instead of Ctrl, ⌥ instead of Alt; strikethrough is ⌘⇧X).
+
+### Updates
+
+When MrTyper opens, it asks GitHub whether a newer version has been released. If there is one, a banner offers to install it: MrTyper downloads the installer, checks its signature, installs it and restarts. Nothing happens until you click **Update**, and an update never starts during a typing session. **Setup → Updates** has a **Check now** button and a switch to turn the launch check off.
+
+Version 2.0.0 and earlier have no updater, so install the first version that has one by hand.
 
 ### Default shortcuts
 
@@ -191,7 +231,7 @@ Close the setup with **Abort**, then launch it with normal rights:
 
 For a setup built from source, the relevant path is `src-tauri\target\release\bundle\nsis\`.
 
-If the installer was previously running, make sure it has fully closed first (check Task Manager for `MrTyper_2.0.0_x64-setup`).
+If the installer was previously running, make sure it has fully closed first (check Task Manager for `MrTyper_2.1.0_x64-setup`).
 
 ## Configuration and privacy
 
@@ -205,7 +245,7 @@ It contains settings, presets, the last script, and remembered window bounds. Wr
 
 For isolated development/testing, two environment overrides are available: `MRTYPER_CONFIG_DIR` changes where the settings JSON lives and `MRTYPER_WEBVIEW_DIR` changes the WebView2 profile directory.
 
-MrTyper makes no network requests at runtime. The only optional network activity happens at install time if the WebView2 bootstrapper must be downloaded.
+At runtime MrTyper makes one kind of network request: the update check, which fetches `latest.json` from this repository's GitHub releases when the app opens (turn it off in **Setup → Updates**) and downloads an installer only when you click **Update**. Updates are signed, and MrTyper refuses one whose signature doesn't match the public key built into the app. The only other network activity happens at install time if the WebView2 bootstrapper must be downloaded.
 
 ## Security notes
 

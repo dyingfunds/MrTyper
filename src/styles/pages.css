@@ -459,7 +459,7 @@
 
 .engine-fader {
   display: grid;
-  grid-template-columns: 58px minmax(0, 1fr) 62px;
+  grid-template-columns: 58px minmax(0, 1fr) 78px;
   align-items: center;
   gap: 12px;
 }
@@ -476,6 +476,7 @@
   font-weight: 600;
   font-variant-numeric: tabular-nums;
   text-align: right;
+  justify-self: end;
   color: var(--accent-text);
 }
 
@@ -518,4 +519,109 @@
   .page-title {
     font-size: 36px;
   }
+}
+
+/* Typo kinds --------------------------------------------------------- */
+
+.chip-row {
+  grid-column: 2 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.chip {
+  height: 24px;
+  padding: 0 9px;
+  border: 1px solid var(--line-2);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-3);
+  font-size: 11.5px;
+  font-weight: 550;
+  transition:
+    background 140ms ease,
+    border-color 140ms ease,
+    color 140ms ease;
+}
+
+.chip:hover:not(:disabled) {
+  border-color: var(--line-3);
+  color: var(--text-2);
+}
+
+.chip.is-on {
+  border-color: var(--accent-line);
+  background: var(--accent-soft);
+  color: var(--accent-text);
+}
+
+.chip:disabled {
+  opacity: 0.5;
+}
+
+.engine-row.is-off .chip.is-on {
+  border-color: var(--line-2);
+  background: transparent;
+  color: var(--text-4);
+}
+
+/* A fader inside a plain settings row -------------------------------- */
+
+.row-fader {
+  display: grid;
+  grid-template-columns: 180px 78px;
+  align-items: center;
+  gap: 12px;
+}
+
+.font-sample.is-mono {
+  font-family: var(--font-mono);
+}
+
+.font-sample.is-sans {
+  font-family: var(--font-sans);
+}
+
+.font-sample.is-serif {
+  font-family: Georgia, "Iowan Old Style", "Times New Roman", serif;
+}
+
+/* Script command cheat sheet ----------------------------------------- */
+
+.command-sheet {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 14px 22px;
+  padding: 14px 18px 16px;
+  border-top: 1px solid var(--line);
+  transition: opacity 200ms ease;
+}
+
+.command-sheet.is-off {
+  opacity: 0.45;
+}
+
+.command-sheet-group ul {
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.command-sheet-group li {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 2px 0;
+  font-size: 12px;
+  color: var(--text-2);
+}
+
+.command-sheet-group code,
+.command-menu code {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--accent-text);
+  white-space: nowrap;
 }

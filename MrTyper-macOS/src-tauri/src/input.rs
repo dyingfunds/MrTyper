@@ -19,6 +19,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use enigo::{Direction, Enigo, Key, Keyboard, NewConError, Settings};
 
+use crate::script::{ComboKey, KeyCombo, NamedKey};
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct FocusTarget {
     pid: i32,
@@ -95,6 +97,85 @@ pub fn send_char(character: char) -> Result<(), String> {
 
 pub fn send_backspace() -> Result<(), String> {
     with_keyboard(|enigo| enigo.key(Key::Backspace, Direction::Click))
+}
+
+/// Apps read shortcuts from the key state, so modifiers go down one at a time
+/// with a short gap, the way a hand presses them.
+const COMBO_GAP: std::time::Duration = std::time::Duration::from_millis(8);
+
+pub fn send_combo(combo: &KeyCombo) -> Result<(), String> {
+    let key = match combo.key {
+        ComboKey::Char(character) => Key::Unicode(character),
+        ComboKey::Named(named) => named_key(named),
+    };
+    let mut modifiers = Vec::with_capacity(4);
+    if combo.modifiers.ctrl {
+        modifiers.push(Key::Control);
+    }
+    if combo.modifiers.alt {
+        modifiers.push(Key::Alt);
+    }
+    if combo.modifiers.shift {
+        modifiers.push(Key::Shift);
+    }
+    if combo.modifiers.meta {
+        modifiers.push(Key::Meta);
+    }
+
+    with_keyboard(|enigo| {
+        let mut pressed = Vec::with_capacity(modifiers.len());
+        let mut result = Ok(());
+        for &modifier in &modifiers {
+            result = enigo.key(modifier, Direction::Press);
+            if result.is_err() {
+                break;
+            }
+            pressed.push(modifier);
+            std::thread::sleep(COMBO_GAP);
+        }
+        if result.is_ok() {
+            result = enigo.key(key, Direction::Click);
+            std::thread::sleep(COMBO_GAP);
+        }
+        // Always let go of the modifiers, even after a failure, so a modifier
+        // is never left held down in the user's session.
+        for &modifier in pressed.iter().rev() {
+            let _ = enigo.key(modifier, Direction::Release);
+        }
+        result
+    })
+}
+
+fn named_key(key: NamedKey) -> Key {
+    match key {
+        NamedKey::Enter => Key::Return,
+        NamedKey::Tab => Key::Tab,
+        NamedKey::Backspace => Key::Backspace,
+        NamedKey::Delete => Key::Delete,
+        NamedKey::Home => Key::Home,
+        NamedKey::End => Key::End,
+        NamedKey::PageUp => Key::PageUp,
+        NamedKey::PageDown => Key::PageDown,
+        NamedKey::Up => Key::UpArrow,
+        NamedKey::Down => Key::DownArrow,
+        NamedKey::Left => Key::LeftArrow,
+        NamedKey::Right => Key::RightArrow,
+        NamedKey::Space => Key::Space,
+        NamedKey::F(number) => match number {
+            1 => Key::F1,
+            2 => Key::F2,
+            3 => Key::F3,
+            4 => Key::F4,
+            5 => Key::F5,
+            6 => Key::F6,
+            7 => Key::F7,
+            8 => Key::F8,
+            9 => Key::F9,
+            10 => Key::F10,
+            11 => Key::F11,
+            _ => Key::F12,
+        },
+    }
 }
 
 // ---------------------------------------------------------------------------

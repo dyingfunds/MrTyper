@@ -44,6 +44,7 @@ const ROOT_ONLY = [
   "scripts/check-platform-sync.mjs",
   "scripts/cross-check.mjs",
   "scripts/bump-version.mjs",
+  "scripts/make-update-manifest.mjs", // used by the release job only
   "scripts/generate_installer_art.py", // NSIS (Windows installer) artwork
   ...COPIES.map((copy) => `${copy}/`),
 ];

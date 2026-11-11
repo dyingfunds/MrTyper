@@ -16,6 +16,7 @@ use tauri::{AppHandle, Emitter};
 
 use crate::hotkeys;
 use crate::input;
+use crate::script::{self, Action, Step};
 use crate::settings::{AppSettings, TypingSettings};
 
 const EVENT_PHASE: &str = "typing-phase";
@@ -123,7 +124,10 @@ struct FinishedEvent {
 struct RunControl {
     id: u64,
     total: usize,
+    /// Script characters covered so far, commands included. Drives progress.
     typed: AtomicUsize,
+    /// Characters actually typed into the target. Drives the WPM read-out.
+    delivered: AtomicUsize,
     phase: AtomicU8,
     countdown: AtomicU8,
     cancel: AtomicBool,
@@ -137,6 +141,7 @@ impl RunControl {
             id,
             total,
             typed: AtomicUsize::new(0),
+            delivered: AtomicUsize::new(0),
             phase: AtomicU8::new(PHASE_COUNTDOWN),
             countdown: AtomicU8::new(0),
             cancel: AtomicBool::new(false),
@@ -468,7 +473,8 @@ fn run_session(
     run.phase.store(PHASE_TYPING, Ordering::SeqCst);
     emit_phase(app, run, "typing", None);
 
-    let plan = build_plan(text, &settings.typing, None);
+    let steps = script::parse(text, settings.script_commands);
+    let plan = build_plan(&steps, &settings.typing, None);
     let guarded_target = if settings.stop_on_focus_loss {
         Some(target)
     } else {
@@ -476,66 +482,75 @@ fn run_session(
     };
     let typing_started = Instant::now();
 
-    for (index, entry) in plan.entries.iter().enumerate() {
-        if !run.wait(duration_ms(entry.pre_delay_ms)) {
-            return cancelled_outcome(run, Some(typing_started));
-        }
-
-        // A pause can begin at any point in the delay. Re-check the foreground
-        // window after the wait so a correction is never sent to a new target.
-        if !run.wait(Duration::ZERO) {
-            return cancelled_outcome(run, Some(typing_started));
+    // Wait, then make sure the session may go on: it wasn't cancelled, and the
+    // target still has focus. A pause can begin at any point in the delay, so
+    // focus is checked after the wait, right before the next key is sent.
+    let checkpoint = |delay_ms: f64| -> Option<SessionOutcome> {
+        if !run.wait(duration_ms(delay_ms)) || !run.wait(Duration::ZERO) {
+            return Some(cancelled_outcome(run, Some(typing_started)));
         }
         if let Some(expected) = guarded_target {
             if input::foreground_target() != Some(expected) {
-                return focus_lost_outcome(run, typing_started);
+                return Some(focus_lost_outcome(run, typing_started));
             }
+        }
+        None
+    };
+
+    for (index, entry) in plan.entries.iter().enumerate() {
+        if let Some(outcome) = checkpoint(entry.pre_delay_ms) {
+            return outcome;
         }
 
         if let Some(typo) = &entry.typo {
-            if let Err(error) = input::send_char(typo.wrong) {
-                return error_outcome(error, typing_started, run);
-            }
-            emit_keystroke(app, run, index + 1, "typo");
-
-            if !run.wait(duration_ms(typo.beat_ms)) {
-                return cancelled_outcome(run, Some(typing_started));
-            }
-            if !run.wait(Duration::ZERO) {
-                return cancelled_outcome(run, Some(typing_started));
-            }
-            if let Some(expected) = guarded_target {
-                if input::foreground_target() != Some(expected) {
-                    return focus_lost_outcome(run, typing_started);
+            for (position, &key) in typo.keys.iter().enumerate() {
+                if position > 0 {
+                    if let Some(outcome) = checkpoint(typo.gaps_ms[position - 1]) {
+                        return outcome;
+                    }
+                }
+                if let Err(error) = input::send_char(key) {
+                    return error_outcome(error, typing_started, run);
+                }
+                if position == 0 {
+                    emit_keystroke(app, run, entry.source_end, "typo");
                 }
             }
-            if let Err(error) = input::send_backspace() {
-                return error_outcome(error, typing_started, run);
+            if let Some(outcome) = checkpoint(typo.reaction_ms) {
+                return outcome;
             }
-            emit_keystroke(app, run, index + 1, "correction");
-
-            if !run.wait(duration_ms(typo.correction_ms)) {
-                return cancelled_outcome(run, Some(typing_started));
-            }
-        }
-
-        if !run.wait(Duration::ZERO) {
-            return cancelled_outcome(run, Some(typing_started));
-        }
-        if let Some(expected) = guarded_target {
-            if input::foreground_target() != Some(expected) {
-                return focus_lost_outcome(run, typing_started);
+            for remaining in (0..typo.keys.len()).rev() {
+                if let Err(error) = input::send_backspace() {
+                    return error_outcome(error, typing_started, run);
+                }
+                if remaining == 0 {
+                    emit_keystroke(app, run, entry.source_end, "correction");
+                }
+                if let Some(outcome) = checkpoint(typo.backspace_ms) {
+                    return outcome;
+                }
             }
         }
-        if let Err(error) = input::send_char(entry.ch) {
-            return error_outcome(error, typing_started, run);
+
+        let sent = match entry.action {
+            Action::Char(character) => input::send_char(character).map(|()| 1),
+            Action::Combo(combo) => input::send_combo(&combo).map(|()| 0),
+            Action::Pause(_) => Ok(0),
+        };
+        match sent {
+            Ok(count) => {
+                run.delivered.fetch_add(count, Ordering::SeqCst);
+            }
+            Err(error) => return error_outcome(error, typing_started, run),
         }
 
-        run.typed.store(index + 1, Ordering::SeqCst);
-        emit_keystroke(app, run, index + 1, "key");
+        run.typed.store(entry.source_end, Ordering::SeqCst);
+        if !matches!(entry.action, Action::Pause(_)) {
+            emit_keystroke(app, run, entry.source_end, "key");
+        }
 
         let elapsed = typing_started.elapsed();
-        let wpm = compute_wpm(index + 1, elapsed);
+        let wpm = compute_wpm(run.delivered.load(Ordering::SeqCst), elapsed);
         let completed_ms = plan
             .completed_ms
             .get(index)
@@ -545,7 +560,7 @@ fn run_session(
         emit_progress(
             app,
             run,
-            index + 1,
+            entry.source_end,
             wpm,
             Some(eta),
             elapsed.as_millis() as u64,
@@ -560,7 +575,7 @@ fn run_session(
     SessionOutcome {
         reason: FinishReason::Completed,
         elapsed_ms: elapsed.as_millis() as u64,
-        wpm: compute_wpm(run.typed.load(Ordering::SeqCst), elapsed),
+        wpm: compute_wpm(run.delivered.load(Ordering::SeqCst), elapsed),
         message: None,
     }
 }
@@ -570,7 +585,7 @@ fn cancelled_outcome(run: &RunControl, started: Option<Instant>) -> SessionOutco
     SessionOutcome {
         reason: run.cancelled_reason(),
         elapsed_ms: elapsed.as_millis() as u64,
-        wpm: compute_wpm(run.typed.load(Ordering::SeqCst), elapsed),
+        wpm: compute_wpm(run.delivered.load(Ordering::SeqCst), elapsed),
         message: None,
     }
 }
@@ -580,7 +595,7 @@ fn focus_lost_outcome(run: &RunControl, started: Instant) -> SessionOutcome {
     SessionOutcome {
         reason: FinishReason::FocusLost,
         elapsed_ms: elapsed.as_millis() as u64,
-        wpm: compute_wpm(run.typed.load(Ordering::SeqCst), elapsed),
+        wpm: compute_wpm(run.delivered.load(Ordering::SeqCst), elapsed),
         message: Some("MrTyper stopped because the target window lost focus.".into()),
     }
 }
@@ -590,7 +605,7 @@ fn error_outcome(error: String, started: Instant, run: &RunControl) -> SessionOu
     SessionOutcome {
         reason: FinishReason::Error,
         elapsed_ms: elapsed.as_millis() as u64,
-        wpm: compute_wpm(run.typed.load(Ordering::SeqCst), elapsed),
+        wpm: compute_wpm(run.delivered.load(Ordering::SeqCst), elapsed),
         message: Some(error),
     }
 }
@@ -658,14 +673,42 @@ pub fn normalize_text(text: &str) -> String {
 
 #[derive(Debug, Clone)]
 struct TypoPlan {
-    wrong: char,
-    beat_ms: f64,
-    correction_ms: f64,
+    /// Keys typed by mistake: the slip itself, then any characters typed
+    /// before it was noticed. All of them are erased again.
+    keys: Vec<char>,
+    /// Delay before each key in `keys` after the first.
+    gaps_ms: Vec<f64>,
+    /// The beat between the last mistaken key and the first backspace.
+    reaction_ms: f64,
+    /// Time after each backspace.
+    backspace_ms: f64,
+}
+
+impl TypoPlan {
+    fn duration_ms(&self) -> f64 {
+        self.gaps_ms.iter().sum::<f64>()
+            + self.reaction_ms
+            + self.backspace_ms * self.keys.len() as f64
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum TypoKind {
+    /// A neighbouring QWERTY key instead of the right one.
+    Neighbor,
+    /// Two letters in the wrong order ("teh").
+    Swap,
+    /// The letter pressed twice.
+    Double,
+    /// The letter left out.
+    Skip,
 }
 
 #[derive(Debug, Clone)]
-struct PlannedChar {
-    ch: char,
+struct PlannedStep {
+    action: Action,
+    /// Script characters covered once this step is done.
+    source_end: usize,
     pre_delay_ms: f64,
     post_delay_ms: f64,
     typo: Option<TypoPlan>,
@@ -673,101 +716,148 @@ struct PlannedChar {
 
 #[derive(Debug, Clone)]
 struct TypingPlan {
-    entries: Vec<PlannedChar>,
+    entries: Vec<PlannedStep>,
     /// Planned time (ms) consumed by the entry at the same index, including
-    /// the corrected character. Used for a stable ETA read-out.
+    /// any typo and its correction. Used for a stable ETA read-out.
     completed_ms: Vec<f64>,
     total_ms: f64,
 }
 
-fn build_plan(text: &str, settings: &TypingSettings, seed: Option<u64>) -> TypingPlan {
-    let characters: Vec<char> = text.chars().collect();
-    let total_chars = characters.len();
+/// How much slower than normal the first key of a warm-up is.
+const WARMUP_SLOWDOWN: f64 = 0.6;
+
+fn build_plan(steps: &[Step], settings: &TypingSettings, seed: Option<u64>) -> TypingPlan {
+    let total_chars = steps
+        .iter()
+        .filter(|step| matches!(step.action, Action::Char(_)))
+        .count();
     let mut rng = match seed {
         Some(seed) => StdRng::seed_from_u64(seed),
         None => StdRng::from_entropy(),
     };
 
-    let mut entries = Vec::with_capacity(total_chars);
-    let mut completed_ms = Vec::with_capacity(total_chars);
+    let mut entries = Vec::with_capacity(steps.len());
+    let mut completed_ms = Vec::with_capacity(steps.len());
     let mut cumulative_ms = 0.0f64;
+    let mut source_end = 0usize;
+    let mut char_index = 0usize;
+    let mut previous_char: Option<char> = None;
 
     let mut burst_start: Option<usize> = None;
     let mut burst_length = 0usize;
     let mut next_burst_at = rng.gen_range(28..58usize);
 
-    for (index, &ch) in characters.iter().enumerate() {
-        let mut pre_delay_ms = base_char_delay(settings, &mut rng);
+    for (step_index, step) in steps.iter().enumerate() {
+        source_end += step.source_len;
 
-        if settings.burst_enabled {
-            if burst_start.is_none() && index >= next_burst_at {
-                burst_start = Some(index);
-                burst_length = rng.gen_range(8..=24usize);
+        let (pre_delay_ms, post_delay_ms, typo) = match step.action {
+            Action::Pause(milliseconds) => (milliseconds as f64, 0.0, None),
+            Action::Combo(_) => {
+                // Reaching for a shortcut takes a moment longer than a key, and
+                // the app needs a beat to apply it before typing resumes.
+                let reach = base_char_delay(settings, &mut rng) + rng.gen_range(90.0..=220.0);
+                (reach, rng.gen_range(140.0..=280.0), None)
             }
+            Action::Char(ch) => {
+                let index = char_index;
+                char_index += 1;
+                let mut pre_delay_ms = base_char_delay(settings, &mut rng);
 
-            if let Some(start) = burst_start {
-                if index < start + burst_length {
-                    let progress = if burst_length <= 1 {
-                        0.5
-                    } else {
-                        (index - start) as f64 / (burst_length - 1) as f64
-                    };
-                    let surge = (std::f64::consts::PI * progress).sin()
-                        * (settings.burst_intensity / 100.0)
-                        * 0.62;
-                    pre_delay_ms /= 1.0 + surge.max(0.0);
-                } else {
-                    burst_start = None;
-                    next_burst_at = index + rng.gen_range(24..=70usize);
+                if settings.burst_enabled {
+                    if burst_start.is_none() && index >= next_burst_at {
+                        burst_start = Some(index);
+                        burst_length = rng.gen_range(8..=24usize);
+                    }
+
+                    if let Some(start) = burst_start {
+                        if index < start + burst_length {
+                            let progress = if burst_length <= 1 {
+                                0.5
+                            } else {
+                                (index - start) as f64 / (burst_length - 1) as f64
+                            };
+                            let surge = (std::f64::consts::PI * progress).sin()
+                                * (settings.burst_intensity / 100.0)
+                                * 0.62;
+                            pre_delay_ms /= 1.0 + surge.max(0.0);
+                        } else {
+                            burst_start = None;
+                            next_burst_at = index + rng.gen_range(24..=70usize);
+                        }
+                    }
                 }
+
+                if settings.fatigue_enabled && total_chars > 1 {
+                    let progress = index as f64 / (total_chars - 1) as f64;
+                    pre_delay_ms *= 1.0 + (settings.fatigue_drift / 100.0) * progress;
+                }
+
+                if settings.warmup_enabled {
+                    let length = settings.warmup_chars.max(1) as usize;
+                    if index < length {
+                        let remaining = 1.0 - index as f64 / length as f64;
+                        pre_delay_ms *= 1.0 + WARMUP_SLOWDOWN * remaining;
+                    }
+                }
+
+                if settings.capital_enabled
+                    && ch.is_uppercase()
+                    && !previous_char.is_some_and(char::is_uppercase)
+                {
+                    pre_delay_ms += settings.capital_extra_ms as f64 * rng.gen_range(0.6..=1.4);
+                }
+
+                let mut post_delay_ms = 0.0;
+                if settings.punctuation_enabled {
+                    if let Some(weight) = punctuation_weight(ch) {
+                        post_delay_ms += base_char_delay(settings, &mut rng)
+                            * (settings.punctuation_factor - 1.0)
+                            * weight;
+                    }
+                }
+
+                if settings.word_pause_enabled && ch == ' ' && previous_char != Some(' ') {
+                    post_delay_ms += settings.word_pause_ms as f64 * rng.gen_range(0.4..=1.6);
+                }
+
+                if ch == '\n' {
+                    if settings.line_break_enabled {
+                        post_delay_ms += settings.line_break_extra_ms as f64
+                            + rng.gen_range(0.0..=settings.line_break_extra_ms as f64 * 0.32);
+                    }
+                    if settings.paragraph_enabled && previous_char == Some('\n') {
+                        post_delay_ms +=
+                            settings.paragraph_extra_ms as f64 * rng.gen_range(1.0..=1.35);
+                    }
+                }
+
+                if settings.thinking_enabled
+                    && index > 0
+                    && index.is_multiple_of(settings.thinking_every_chars.max(1) as usize)
+                    && rng.gen_bool(0.7)
+                {
+                    let maximum = settings.thinking_pause_max_ms as f64;
+                    let minimum = (maximum * 0.35).max(300.0);
+                    post_delay_ms += rng.gen_range(minimum..=maximum);
+                }
+
+                let typo = if settings.typos_enabled {
+                    typo_for(steps, step_index, settings, &mut rng)
+                } else {
+                    None
+                };
+
+                previous_char = Some(ch);
+                (pre_delay_ms.max(6.0), post_delay_ms.max(0.0), typo)
             }
-        }
-
-        if settings.fatigue_enabled && total_chars > 1 {
-            let progress = index as f64 / (total_chars - 1) as f64;
-            pre_delay_ms *= 1.0 + (settings.fatigue_drift / 100.0) * progress;
-        }
-
-        let mut post_delay_ms = 0.0;
-        if settings.punctuation_enabled {
-            if let Some(weight) = punctuation_weight(ch) {
-                post_delay_ms +=
-                    base_char_delay(settings, &mut rng) * (settings.punctuation_factor - 1.0) * weight;
-            }
-        }
-
-        if settings.line_break_enabled && ch == '\n' {
-            post_delay_ms +=
-                settings.line_break_extra_ms as f64 + rng.gen_range(0.0..=settings.line_break_extra_ms as f64 * 0.32);
-        }
-
-        if settings.thinking_enabled
-            && index > 0
-            && index % settings.thinking_every_chars.max(1) as usize == 0
-            && rng.gen_bool(0.7)
-        {
-            let maximum = settings.thinking_pause_max_ms as f64;
-            let minimum = (maximum * 0.35).max(300.0);
-            post_delay_ms += rng.gen_range(minimum..=maximum);
-        }
-
-        let typo = if settings.typos_enabled {
-            typo_for(ch, settings.typo_chance, &mut rng)
-        } else {
-            None
         };
 
-        pre_delay_ms = pre_delay_ms.max(6.0);
-        post_delay_ms = post_delay_ms.max(0.0);
-
-        let typo_ms = typo
-            .as_ref()
-            .map(|typo| typo.beat_ms + typo.correction_ms)
-            .unwrap_or(0.0);
+        let typo_ms = typo.as_ref().map(TypoPlan::duration_ms).unwrap_or(0.0);
         cumulative_ms += pre_delay_ms + post_delay_ms + typo_ms;
 
-        entries.push(PlannedChar {
-            ch,
+        entries.push(PlannedStep {
+            action: step.action,
+            source_end,
             pre_delay_ms,
             post_delay_ms,
             typo,
@@ -802,27 +892,83 @@ fn punctuation_weight(character: char) -> Option<f64> {
     }
 }
 
-fn typo_for(character: char, chance_percent: f64, rng: &mut impl Rng) -> Option<TypoPlan> {
+/// The character typed at `index`, if that step types one.
+fn char_at(steps: &[Step], index: usize) -> Option<char> {
+    match steps.get(index)?.action {
+        Action::Char(character) => Some(character),
+        _ => None,
+    }
+}
+
+fn typo_for(
+    steps: &[Step],
+    index: usize,
+    settings: &TypingSettings,
+    rng: &mut impl Rng,
+) -> Option<TypoPlan> {
+    let character = char_at(steps, index)?;
+    let chance = settings.typo_chance;
     if !character.is_ascii_alphabetic()
-        || !(0.0..=100.0).contains(&chance_percent)
-        || !rng.gen_bool(chance_percent / 100.0)
+        || !(0.0..=100.0).contains(&chance)
+        || !rng.gen_bool(chance / 100.0)
     {
         return None;
     }
 
-    let lower = character.to_ascii_lowercase();
-    let neighbors = qwerty_neighbors(lower)?;
-    let neighbor = neighbors[rng.gen_range(0..neighbors.len())];
-    let wrong = if character.is_ascii_uppercase() {
-        neighbor.to_ascii_uppercase()
-    } else {
-        neighbor
+    let next = char_at(steps, index + 1).filter(char::is_ascii_alphabetic);
+    let mut kinds = Vec::with_capacity(4);
+    if settings.typo_neighbor {
+        kinds.push(TypoKind::Neighbor);
+    }
+    if settings.typo_swap && next.is_some_and(|next| next != character) {
+        kinds.push(TypoKind::Swap);
+    }
+    if settings.typo_double {
+        kinds.push(TypoKind::Double);
+    }
+    if settings.typo_skip && next.is_some() {
+        kinds.push(TypoKind::Skip);
+    }
+    if kinds.is_empty() {
+        return None;
+    }
+
+    let (mut keys, resume_at) = match kinds[rng.gen_range(0..kinds.len())] {
+        TypoKind::Neighbor => {
+            let neighbors = qwerty_neighbors(character.to_ascii_lowercase())?;
+            let neighbor = neighbors[rng.gen_range(0..neighbors.len())];
+            let wrong = if character.is_ascii_uppercase() {
+                neighbor.to_ascii_uppercase()
+            } else {
+                neighbor
+            };
+            (vec![wrong], index + 1)
+        }
+        TypoKind::Swap => (vec![next?, character], index + 2),
+        TypoKind::Double => (vec![character, character], index + 1),
+        TypoKind::Skip => (vec![next?], index + 2),
     };
 
+    // Sometimes the slip is only noticed a few keys later.
+    let late_chance = (settings.late_notice_chance / 100.0).clamp(0.0, 1.0);
+    if rng.gen_bool(late_chance) {
+        let extra = rng.gen_range(1..=3usize);
+        for offset in 0..extra {
+            match char_at(steps, resume_at + offset) {
+                Some(follow) if follow != '\n' && follow != '\t' => keys.push(follow),
+                _ => break,
+            }
+        }
+    }
+
+    let gaps_ms = (1..keys.len())
+        .map(|_| base_char_delay(settings, rng))
+        .collect();
     Some(TypoPlan {
-        wrong,
-        beat_ms: rng.gen_range(70.0..=180.0),
-        correction_ms: rng.gen_range(45.0..=115.0),
+        keys,
+        gaps_ms,
+        reaction_ms: settings.typo_reaction_ms as f64 * rng.gen_range(0.6..=1.4),
+        backspace_ms: settings.backspace_ms as f64 * rng.gen_range(0.75..=1.25),
     })
 }
 
@@ -877,7 +1023,28 @@ mod tests {
             burst_enabled: false,
             typos_enabled: false,
             fatigue_enabled: false,
+            paragraph_enabled: false,
+            word_pause_enabled: false,
+            capital_enabled: false,
+            warmup_enabled: false,
             ..TypingSettings::default()
+        }
+    }
+
+    fn build(text: &str, settings: &TypingSettings, seed: u64) -> TypingPlan {
+        build_plan(&script::parse(text, true), settings, Some(seed))
+    }
+
+    fn only_typo(kind: TypoKind) -> TypingSettings {
+        TypingSettings {
+            typos_enabled: true,
+            typo_chance: 100.0,
+            typo_neighbor: kind == TypoKind::Neighbor,
+            typo_swap: kind == TypoKind::Swap,
+            typo_double: kind == TypoKind::Double,
+            typo_skip: kind == TypoKind::Skip,
+            late_notice_chance: 0.0,
+            ..quiet_profile()
         }
     }
 
@@ -899,7 +1066,7 @@ mod tests {
     #[test]
     fn keystroke_delays_stay_inside_the_wpm_envelope() {
         let settings = quiet_profile();
-        let plan = build_plan(&"a".repeat(600), &settings, Some(7));
+        let plan = build(&"a".repeat(600), &settings, 7);
         let fastest = 12_000.0 / settings.max_wpm;
         let slowest = 12_000.0 / settings.min_wpm;
         let delays = pre_delays(&plan);
@@ -923,7 +1090,7 @@ mod tests {
             randomness: 0.0,
             ..quiet_profile()
         };
-        let plan = build_plan(&"a".repeat(80), &settings, Some(42));
+        let plan = build(&"a".repeat(80), &settings, 42);
         let delays = pre_delays(&plan);
         let expected = (12_000.0 / settings.min_wpm + 12_000.0 / settings.max_wpm) / 2.0;
 
@@ -942,8 +1109,8 @@ mod tests {
             randomness: 100.0,
             ..quiet_profile()
         };
-        let steady_plan = build_plan(&"a".repeat(500), &steady, Some(99));
-        let lively_plan = build_plan(&"a".repeat(500), &lively, Some(99));
+        let steady_plan = build(&"a".repeat(500), &steady, 99);
+        let lively_plan = build(&"a".repeat(500), &lively, 99);
 
         let steady_spread = standard_deviation(&pre_delays(&steady_plan));
         let lively_spread = standard_deviation(&pre_delays(&lively_plan));
@@ -963,7 +1130,7 @@ mod tests {
             line_break_extra_ms: 500,
             ..quiet_profile()
         };
-        let plan = build_plan("Wait.\nReally?", &settings, Some(5));
+        let plan = build("Wait.\nReally?", &settings, 5);
         let punctuation_pause = plan.entries[4].post_delay_ms;
         let line_break_pause = plan.entries[5].post_delay_ms;
         let plain_pause = plan.entries[1].post_delay_ms;
@@ -975,29 +1142,111 @@ mod tests {
 
     #[test]
     fn typo_probability_and_qwerty_neighbors_are_sound() {
-        let settings = TypingSettings {
-            typos_enabled: true,
-            typo_chance: 100.0,
-            burst_enabled: false,
-            ..quiet_profile()
-        };
-        let plan = build_plan(&"a".repeat(400), &settings, Some(1234));
+        let settings = only_typo(TypoKind::Neighbor);
+        let plan = build(&"a".repeat(400), &settings, 1234);
+        let reaction = settings.typo_reaction_ms as f64;
+        let backspace = settings.backspace_ms as f64;
         for entry in &plan.entries {
             let typo = entry.typo.as_ref().expect("every letter should typo");
-            assert_ne!(typo.wrong, 'a');
-            assert!(qwerty_neighbors('a').unwrap().contains(&typo.wrong));
-            assert!((70.0..=180.0).contains(&typo.beat_ms));
-            assert!((45.0..=115.0).contains(&typo.correction_ms));
+            assert_eq!(typo.keys.len(), 1);
+            assert_ne!(typo.keys[0], 'a');
+            assert!(qwerty_neighbors('a').unwrap().contains(&typo.keys[0]));
+            assert!((reaction * 0.6..=reaction * 1.4).contains(&typo.reaction_ms));
+            assert!((backspace * 0.75..=backspace * 1.25).contains(&typo.backspace_ms));
         }
 
-        let uppercase = build_plan("AAA", &settings, Some(9));
+        let uppercase = build("AAA", &settings, 9);
         assert!(uppercase
             .entries
             .iter()
-            .all(|entry| entry.typo.as_ref().unwrap().wrong.is_ascii_uppercase()));
+            .all(|entry| entry.typo.as_ref().unwrap().keys[0].is_ascii_uppercase()));
 
-        let punctuation = build_plan("...!?", &settings, Some(9));
+        let punctuation = build("...!?", &settings, 9);
         assert!(punctuation.entries.iter().all(|entry| entry.typo.is_none()));
+    }
+
+    #[test]
+    fn each_typo_kind_types_the_expected_slip() {
+        let first_typo = |kind: TypoKind| {
+            let plan = build("ab", &only_typo(kind), 4);
+            plan.entries[0].typo.clone().expect("the first letter should typo").keys
+        };
+        assert_eq!(first_typo(TypoKind::Swap), vec!['b', 'a']);
+        assert_eq!(first_typo(TypoKind::Double), vec!['a', 'a']);
+        assert_eq!(first_typo(TypoKind::Skip), vec!['b']);
+
+        // Swaps and skips need a following letter; the last one can't do either.
+        let swap_only = build("ab", &only_typo(TypoKind::Swap), 4);
+        assert!(swap_only.entries[1].typo.is_none());
+    }
+
+    #[test]
+    fn a_late_noticed_typo_also_erases_the_keys_typed_after_it() {
+        let settings = TypingSettings {
+            late_notice_chance: 100.0,
+            ..only_typo(TypoKind::Neighbor)
+        };
+        let plan = build("abcdef", &settings, 21);
+        let typo = plan.entries[0].typo.as_ref().unwrap();
+        assert!((2..=4).contains(&typo.keys.len()));
+        assert_eq!(&typo.keys[1..], &['b', 'c', 'd'][..typo.keys.len() - 1]);
+        assert_eq!(typo.gaps_ms.len(), typo.keys.len() - 1);
+
+        // Never past the end of a line.
+        let short = build("a\nbcd", &settings, 21);
+        assert_eq!(short.entries[0].typo.as_ref().unwrap().keys.len(), 1);
+    }
+
+    #[test]
+    fn commands_become_shortcuts_and_pauses_without_typos() {
+        let settings = TypingSettings {
+            typos_enabled: true,
+            typo_chance: 100.0,
+            ..quiet_profile()
+        };
+        let plan = build("a{{bold}}b{{pause 2}}", &settings, 6);
+        let ends: Vec<usize> = plan.entries.iter().map(|entry| entry.source_end).collect();
+        assert_eq!(ends, vec![1, 9, 10, 21]);
+        assert!(matches!(plan.entries[1].action, Action::Combo(_)));
+        assert!(plan.entries[1].typo.is_none());
+        assert_eq!(plan.entries[3].action, Action::Pause(2000));
+        assert_eq!(plan.entries[3].pre_delay_ms, 2000.0);
+    }
+
+    #[test]
+    fn paragraphs_capitals_and_words_add_their_own_pauses() {
+        let settings = TypingSettings {
+            randomness: 0.0,
+            paragraph_enabled: true,
+            paragraph_extra_ms: 1000,
+            capital_enabled: true,
+            capital_extra_ms: 100,
+            word_pause_enabled: true,
+            word_pause_ms: 100,
+            ..quiet_profile()
+        };
+        let plan = build("a b\n\nCd", &settings, 2);
+        let base = (12_000.0 / settings.min_wpm + 12_000.0 / settings.max_wpm) / 2.0;
+        assert!(plan.entries[1].post_delay_ms >= 40.0, "space");
+        assert_eq!(plan.entries[3].post_delay_ms, 0.0, "a single line break");
+        assert!(plan.entries[4].post_delay_ms >= 1000.0, "the blank line");
+        assert!(plan.entries[5].pre_delay_ms >= base + 60.0, "the capital");
+        assert!((plan.entries[6].pre_delay_ms - base).abs() < 0.001, "lowercase");
+    }
+
+    #[test]
+    fn warm_up_starts_slow_and_reaches_full_speed() {
+        let settings = TypingSettings {
+            randomness: 0.0,
+            warmup_enabled: true,
+            warmup_chars: 50,
+            ..quiet_profile()
+        };
+        let plan = build(&"a".repeat(80), &settings, 3);
+        let base = (12_000.0 / settings.min_wpm + 12_000.0 / settings.max_wpm) / 2.0;
+        assert!((plan.entries[0].pre_delay_ms - base * (1.0 + WARMUP_SLOWDOWN)).abs() < 0.001);
+        assert!(plan.entries[25].pre_delay_ms < plan.entries[0].pre_delay_ms);
+        assert!((plan.entries[60].pre_delay_ms - base).abs() < 0.001);
     }
 
     #[test]
@@ -1007,7 +1256,7 @@ mod tests {
             typo_chance: 100.0,
             ..quiet_profile()
         };
-        let plan = build_plan("Hello, world!", &settings, Some(8));
+        let plan = build("Hello, world!", &settings, 8);
         assert!(plan.entries.iter().all(|entry| entry.typo.is_none()));
     }
 
@@ -1019,7 +1268,7 @@ mod tests {
             punctuation_factor: 4.0,
             ..quiet_profile()
         };
-        let plan = build_plan("hi. there.", &settings, Some(3));
+        let plan = build("hi. there.", &settings, 3);
         assert!(plan.total_ms > 0.0);
         assert!(plan.completed_ms.windows(2).all(|window| window[0] <= window[1]));
         assert!((plan.completed_ms.last().unwrap() - plan.total_ms).abs() < 0.0001);

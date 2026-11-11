@@ -7,10 +7,21 @@ export type Accent = "volt" | "ember" | "ice" | "orchid";
 /** "system" follows the operating system's reduced-motion preference. */
 export type MotionPref = "system" | "full" | "reduced";
 
+/** The script editor's typeface. */
+export type EditorFont = "mono" | "sans" | "serif";
+
 export interface UiPrefs {
   accent: Accent;
   motion: MotionPref;
+  editorFont: EditorFont;
+  /** Script editor text size in px. */
+  editorSize: number;
+  /** Show the cadence scope in the transport bar. */
+  showScope: boolean;
 }
+
+export const EDITOR_SIZE_MIN = 11;
+export const EDITOR_SIZE_MAX = 24;
 
 export const ACCENTS: Array<{ id: Accent; label: string }> = [
   { id: "volt", label: "Volt" },
@@ -20,9 +31,16 @@ export const ACCENTS: Array<{ id: Accent; label: string }> = [
 ];
 
 const MOTION_PREFS: MotionPref[] = ["system", "full", "reduced"];
+const EDITOR_FONTS: EditorFont[] = ["mono", "sans", "serif"];
 const STORAGE_KEY = "mrtyper.ui.v1";
 
-export const DEFAULT_UI_PREFS: UiPrefs = { accent: "volt", motion: "system" };
+export const DEFAULT_UI_PREFS: UiPrefs = {
+  accent: "volt",
+  motion: "system",
+  editorFont: "mono",
+  editorSize: 14.5,
+  showScope: true,
+};
 
 export const REDUCED_MOTION_QUERY = "(prefers-reduced-motion: reduce)";
 
@@ -38,6 +56,15 @@ export function loadUiPrefs(): UiPrefs {
       motion: MOTION_PREFS.includes(parsed.motion as MotionPref)
         ? (parsed.motion as MotionPref)
         : DEFAULT_UI_PREFS.motion,
+      editorFont: EDITOR_FONTS.includes(parsed.editorFont as EditorFont)
+        ? (parsed.editorFont as EditorFont)
+        : DEFAULT_UI_PREFS.editorFont,
+      editorSize:
+        typeof parsed.editorSize === "number" && Number.isFinite(parsed.editorSize)
+          ? Math.min(EDITOR_SIZE_MAX, Math.max(EDITOR_SIZE_MIN, parsed.editorSize))
+          : DEFAULT_UI_PREFS.editorSize,
+      showScope:
+        typeof parsed.showScope === "boolean" ? parsed.showScope : DEFAULT_UI_PREFS.showScope,
     };
   } catch {
     return DEFAULT_UI_PREFS;
@@ -58,6 +85,18 @@ export function shouldReduceMotion(motion: MotionPref, systemReduces: boolean): 
 
 export function applyAccent(accent: Accent): void {
   document.documentElement.dataset.accent = accent;
+}
+
+const EDITOR_FONT_STACKS: Record<EditorFont, string> = {
+  mono: "var(--font-mono)",
+  sans: "var(--font-sans)",
+  serif: 'Georgia, "Iowan Old Style", "Times New Roman", serif',
+};
+
+export function applyEditorLook(font: EditorFont, size: number): void {
+  const style = document.documentElement.style;
+  style.setProperty("--editor-font", EDITOR_FONT_STACKS[font]);
+  style.setProperty("--editor-size", `${size}px`);
 }
 
 export function applyReducedMotion(reduced: boolean): void {

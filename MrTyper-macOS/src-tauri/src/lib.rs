@@ -3,6 +3,7 @@ mod commands;
 mod engine;
 mod hotkeys;
 mod input;
+mod script;
 mod settings;
 mod store;
 mod tray;
@@ -33,6 +34,9 @@ pub fn run() {
                 })
                 .build(),
         )
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
             commands::bootstrap,
             commands::save_settings,
@@ -48,6 +52,7 @@ pub fn run() {
             commands::rename_preset,
             commands::delete_preset,
             commands::apply_backdrop_theme,
+            commands::can_self_update,
         ])
         .setup(|app| {
             let config_dir = std::env::var_os("MRTYPER_CONFIG_DIR")

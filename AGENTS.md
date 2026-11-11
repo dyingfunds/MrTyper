@@ -4,7 +4,7 @@ Read this before changing anything. It explains how the repository is put togeth
 
 ## What MrTyper is
 
-A desktop app that types a script into whatever window the user focuses, with human-like rhythm: WPM range, randomness, punctuation, line-break and thinking pauses, bursts, QWERTY typos with corrections, and fatigue. It's built with **Tauri 2**: a **React 19 + TypeScript + Tailwind 4** UI, and a **Rust** engine that plans the timing and sends real keystrokes. It's local-only: no network calls, no accounts.
+A desktop app that types a script into whatever window the user focuses, with human-like rhythm: WPM range, randomness, punctuation, line-break and thinking pauses, bursts, QWERTY typos with corrections, and fatigue. It's built with **Tauri 2**: a **React 19 + TypeScript + Tailwind 4** UI, and a **Rust** engine that plans the timing and sends real keystrokes. It's local-first: no accounts or analytics, and its only network request is the optional update check against GitHub Releases.
 
 ## Repository layout: three apps, one codebase
 
@@ -67,9 +67,10 @@ Keep platform logic out of shared code:
 | File | Role |
 | --- | --- |
 | `lib.rs` | App setup: plugins (single-instance first, then global shortcuts), window creation with saved bounds, tray, close-to-tray, focus tracking |
-| `engine.rs` | Builds the timing plan (`build_plan`), runs one worker thread per session, emits events, and holds most of the unit tests |
-| `input.rs` | **Platform layer.** The same API everywhere: `prepare`, `send_char`, `send_backspace`, `foreground_target`, `is_own_process`, `set_own_window_focused` and `NO_TARGET_MESSAGE` |
-| `commands.rs` | The Tauri command surface the UI calls |
+| `engine.rs` | Builds the timing plan (`build_plan`) from script steps, runs one worker thread per session, emits events, and holds most of the unit tests |
+| `script.rs` | Splits a script into steps: typed characters and `{{…}}` commands (Google Docs shortcuts, raw key combos, pauses). Mirrored by `src/lib/scriptCommands.ts` |
+| `input.rs` | **Platform layer.** The same API everywhere: `prepare`, `send_char`, `send_backspace`, `send_combo`, `foreground_target`, `is_own_process`, `set_own_window_focused` and `NO_TARGET_MESSAGE` |
+| `commands.rs` | The Tauri command surface the UI calls, including `can_self_update` for the updater |
 | `hotkeys.rs` | Global start/pause shortcuts, plus Esc registered only during a session |
 | `actions.rs` | Start/stop/pause actions shared by hotkeys, the tray and commands |
 | `settings.rs`, `store.rs` | Settings model and defaults; atomic JSON persistence in the app config dir (`mrtyper.json`) |
@@ -88,6 +89,9 @@ Engine → UI events:
 
 - **`App.tsx`** holds all state and the native event stream, and routes the three pages: `TypePage`, `PresetsPage`, `SettingsPage`.
 - **`lib/bridge.ts`** wraps every Tauri call. In a plain browser it uses **`lib/mockBackend.ts`**, a localStorage-backed fake engine that never sends keystrokes, so `pnpm dev` works anywhere.
+- **`lib/scriptCommands.ts`** mirrors `script.rs` so the UI can count characters without commands, estimate pause time and offer the command menu. **Change the two together**; `script.rs` has the tests.
+- **`lib/updates.ts`** wraps the updater, process and opener plugins. The update check runs once on launch (if enabled) and installs only when the user clicks Update.
+- **`components/ui/NumberField.tsx`** is the click-to-type value next to every slider. Use it for any new slider.
 
 Performance rules. They're why the UI stays smooth at 300 WPM; keep them:
 - **Keystrokes never become React state.** `typing-keystroke` goes to `lib/liveBus.ts`, which `CadenceScope` (a canvas) and `LiveScript` read directly.
@@ -149,6 +153,12 @@ Nobody has yet used the macOS or Linux apps on real hardware beyond the CI build
 
 ## Releasing
 
+The in-app updater needs every release to be signed:
+
+- **Secrets.** The repository must have the Actions secrets `TAURI_SIGNING_PRIVATE_KEY` (the contents of the private key file) and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`. The matching public key is in `plugins.updater.pubkey` of all three `tauri.conf.json` files. The private key stays with the maintainer and is never committed.
+- **What CI does with them.** With the secret present, the Windows, Linux and macOS jobs build with `createUpdaterArtifacts` on, which adds a `.sig` beside the NSIS installer, the AppImage and `MrTyper.app.tar.gz`. The release job runs `scripts/make-update-manifest.mjs` to fold those into `latest.json`, which installed apps fetch from `releases/latest/download/latest.json`. Without the secret, builds still work but have no update files.
+- **Never lose or rotate the key casually.** Installed copies only accept updates signed by the key they shipped with. A new key means everyone has to reinstall by hand once.
+
 1. `node scripts/bump-version.mjs x.y.z`, then add the release notes to `CHANGELOG.md`, moving them out of Unreleased.
 2. Rebuild the Windows installer committed in `release/`: run `pnpm tauri:build` at the root, copy `src-tauri/target/release/bundle/nsis/MrTyper_x.y.z_x64-setup.exe` into `release/`, delete the old one, and regenerate `release/SHA256SUMS.txt`.
 3. Commit, push to `main`, then `git tag -a vx.y.z -m "MrTyper x.y.z"` and `git push origin vx.y.z`.
@@ -156,9 +166,13 @@ Nobody has yet used the macOS or Linux apps on real hardware beyond the CI build
 
 ## Known traps
 
+- **Updates and the macOS Accessibility permission.** The app is ad-hoc signed, so every new version looks like a different app to macOS and its Accessibility permission has to be granted again after an update. The macOS README says so.
+- **Linux packages can't update themselves.** Only the AppImage can be replaced in place. `can_self_update` returns false for `.deb`, `.rpm` and Arch installs (no `APPIMAGE` variable), and the UI opens the download page instead.
+- **Script commands send real shortcuts.** `{{alt+f4}}` really closes the window. Escape is refused because it's the emergency stop; keep it that way.
+
 - **enigo sends through every Linux backend it connects to.** Connecting X11 and Wayland at once types each key twice. `input.rs` (Linux) disables the unwanted backend by passing an unconnectable display name. The `libei` backend is deliberately not enabled: it prompts on every connection and can panic when the desktop portal is missing.
 - **Wayland limits are architectural, not bugs.** There's no global focus query and no global hotkeys, and GNOME/KDE don't offer virtual keyboards. The Linux app documents this in its README, Setup page and a runtime toast.
-- **macOS Accessibility permission** is tied to the app's signature. The app is ad-hoc signed (`signingIdentity: "-"`), because Apple Silicon won't run unsigned code; it isn't notarised. Users must right-click → Open the first time.
+- **macOS Accessibility permission** is tied to the app's signature. The app is ad-hoc signed (`signingIdentity: "-"`), because Apple Silicon won't run unsigned code; it isn't notarised. Gatekeeper blocks the first launch. Since macOS 15, right-click → Open no longer bypasses it: users must click **Open Anyway** in System Settings → Privacy & Security (or clear the quarantine flag with `xattr`). Keep the install steps in `MrTyper-macOS/README.md`, the root README and `.github/release-notes.md` in agreement.
 - **Cargo `trim-paths` is unstable,** hence `scripts/build-release.mjs`, which remaps paths with `CARGO_ENCODED_RUSTFLAGS` (that form survives spaces in paths). Always build releases through `pnpm tauri:build`, never plain `tauri build`, or the builder's user name ends up in the binary.
 - **The webview data folder is named `webview2` on every platform,** so existing Windows installs keep their stored UI preferences.
 - **Windows shell quirks:**
@@ -173,5 +187,5 @@ Nobody has yet used the macOS or Linux apps on real hardware beyond the CI build
 
 - Code signing and notarisation for macOS (needs an Apple Developer account), and signing for the Windows installer.
 - Wayland: an XDG RemoteDesktop/libei path for GNOME and KDE, and the XDG GlobalShortcuts portal for hotkeys.
-- Auto-update via the Tauri updater plugin, served from GitHub Releases.
+- Script command shortcuts for Microsoft Word and other editors (today they target Google Docs).
 - README screenshots for macOS and Linux (the current ones are from Windows).

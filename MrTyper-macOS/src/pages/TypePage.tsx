@@ -1,6 +1,7 @@
 import { AnimatePresence, motion } from "framer-motion";
 import {
   ArrowUpRight,
+  Braces,
   ClipboardPaste,
   Eraser,
   FileDown,
@@ -26,9 +27,12 @@ import { Tachometer } from "../components/Tachometer";
 import { AnimatedNumber } from "../components/ui/AnimatedNumber";
 import { Button, IconButton } from "../components/ui/Button";
 import { Keycap } from "../components/ui/Keycap";
+import { NumberField } from "../components/ui/NumberField";
 import { RangeSlider, Slider } from "../components/ui/Slider";
 import { humanLabel, humanScore } from "../lib/cadence";
 import { easeOut, springSnappy } from "../lib/motion";
+import { PLATFORM } from "../lib/platform";
+import { COMMAND_GROUPS, typedText } from "../lib/scriptCommands";
 import {
   averageWpm,
   characterCount,
@@ -63,6 +67,7 @@ interface TypePageProps {
   engine: LiveEngineState;
   lastRun: SessionSummary | null;
   paletteKey: string;
+  showScope: boolean;
   onTextChange: (text: string) => void;
   onTypingChange: (patch: Partial<TypingSettings>) => void;
   onStart: () => void;
@@ -82,6 +87,88 @@ interface ScriptCounts {
 const MAX_DROP_BYTES = 1_500_000;
 
 /* ------------------------------------------------------------------ */
+/*  Command menu                                                       */
+/* ------------------------------------------------------------------ */
+
+const IS_MAC = PLATFORM.id === "macos";
+
+/** The {{…}} commands, offered from a button above the script. */
+function CommandMenu({
+  disabled,
+  onPick,
+}: {
+  disabled: boolean;
+  onPick: (token: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const anchorRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const close = (event: PointerEvent) => {
+      if (!anchorRef.current?.contains(event.target as Node)) setOpen(false);
+    };
+    const escape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.stopPropagation();
+      setOpen(false);
+    };
+    window.addEventListener("pointerdown", close, true);
+    window.addEventListener("keydown", escape, true);
+    return () => {
+      window.removeEventListener("pointerdown", close, true);
+      window.removeEventListener("keydown", escape, true);
+    };
+  }, [open]);
+
+  useEffect(() => {
+    if (disabled) setOpen(false);
+  }, [disabled]);
+
+  return (
+    <div className="command-anchor" ref={anchorRef}>
+      <IconButton
+        label="Insert a formatting command"
+        onClick={() => setOpen((current) => !current)}
+        disabled={disabled}
+      >
+        <Braces size={15} strokeWidth={1.8} />
+      </IconButton>
+      {open ? (
+        <div className="command-menu" role="menu" aria-label="Insert a command">
+          <p className="command-menu-note">
+            Inserted at the cursor. MrTyper presses the Google Docs shortcut instead of typing it.
+          </p>
+          {COMMAND_GROUPS.map((group) => (
+            <div className="command-menu-group" key={group.label}>
+              <span className="label">{group.label}</span>
+              {group.options.map((option) => {
+                const keys = IS_MAC ? option.keys.mac : option.keys.other;
+                return (
+                  <button
+                    key={option.token}
+                    type="button"
+                    role="menuitem"
+                    className="command-menu-item"
+                    onClick={() => {
+                      onPick(option.token);
+                      setOpen(false);
+                    }}
+                  >
+                    <span>{option.label}</span>
+                    <code>{keys === "—" ? `{{${option.token}}}` : keys}</code>
+                  </button>
+                );
+              })}
+            </div>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
 /*  Stage                                                              */
 /* ------------------------------------------------------------------ */
 
@@ -92,6 +179,7 @@ interface StageProps {
   total: number;
   counts: ScriptCounts;
   hotkeyStart: string;
+  scriptCommands: boolean;
   onTextChange: (text: string) => void;
   notify: Notify;
 }
@@ -103,6 +191,7 @@ const Stage = memo(function Stage({
   total,
   counts,
   hotkeyStart,
+  scriptCommands,
   onTextChange,
   notify,
 }: StageProps) {
@@ -239,6 +328,12 @@ const Stage = memo(function Stage({
         </div>
 
         <div className="stage-actions">
+          {scriptCommands ? (
+            <CommandMenu
+              disabled={!isIdle}
+              onPick={(token) => insertAtCursor(`{{${token}}}`)}
+            />
+          ) : null}
           <IconButton
             label="Paste from clipboard"
             onClick={() => void pasteFromClipboard()}
@@ -421,7 +516,19 @@ const Deck = memo(function Deck({
         />
         <div className="tempo-range">
           <div className="tempo-bound">
-            <strong>{typing.minWpm}</strong>
+            <NumberField
+              className="tempo-bound-value"
+              value={typing.minWpm}
+              min={10}
+              max={300}
+              format={(value) => `${value}`}
+              unit="wpm"
+              ariaLabel="Minimum words per minute"
+              disabled={!isIdle}
+              onChange={(minWpm) =>
+                onTypingChange({ minWpm, maxWpm: Math.max(minWpm, typing.maxWpm) })
+              }
+            />
             <span>Min</span>
           </div>
           <RangeSlider
@@ -438,7 +545,19 @@ const Deck = memo(function Deck({
             onDragChange={setTempoDragging}
           />
           <div className="tempo-bound">
-            <strong>{typing.maxWpm}</strong>
+            <NumberField
+              className="tempo-bound-value"
+              value={typing.maxWpm}
+              min={10}
+              max={300}
+              format={(value) => `${value}`}
+              unit="wpm"
+              ariaLabel="Maximum words per minute"
+              disabled={!isIdle}
+              onChange={(maxWpm) =>
+                onTypingChange({ maxWpm, minWpm: Math.min(maxWpm, typing.minWpm) })
+              }
+            />
             <span>Max</span>
           </div>
         </div>
@@ -451,7 +570,17 @@ const Deck = memo(function Deck({
               Head start
               <span className="control-hint">before the first key</span>
             </span>
-            <span className="control-value">{typing.startDelaySecs}s</span>
+            <NumberField
+              className="control-value"
+              value={typing.startDelaySecs}
+              min={1}
+              max={30}
+              unit="s"
+              format={(value) => `${value}s`}
+              ariaLabel="Start delay in seconds"
+              disabled={!isIdle}
+              onChange={(startDelaySecs) => onTypingChange({ startDelaySecs })}
+            />
           </div>
           <Slider
             min={1}
@@ -471,7 +600,17 @@ const Deck = memo(function Deck({
               Randomness
               <span className="control-hint">key-to-key variance</span>
             </span>
-            <span className="control-value">{typing.randomness}%</span>
+            <NumberField
+              className="control-value"
+              value={typing.randomness}
+              min={0}
+              max={100}
+              unit="%"
+              format={(value) => `${value}%`}
+              ariaLabel="Keystroke randomness"
+              disabled={!isIdle}
+              onChange={(randomness) => onTypingChange({ randomness })}
+            />
           </div>
           <Slider
             min={0}
@@ -609,6 +748,7 @@ interface TransportProps {
   hotkeyStart: string;
   hotkeyPause: string;
   paletteKey: string;
+  showScope: boolean;
   onStart: () => void;
   onStop: () => void;
   onPauseResume: () => void;
@@ -622,6 +762,7 @@ const Transport = memo(function Transport({
   hotkeyStart,
   hotkeyPause,
   paletteKey,
+  showScope,
   onStart,
   onStop,
   onPauseResume,
@@ -737,13 +878,13 @@ const Transport = memo(function Transport({
         </AnimatePresence>
       </div>
 
-      <div className="scope">
+      <div className={cn("scope", !showScope && "is-hidden")}>
         <div className="scope-head">
           <span className={cn("scope-status", statusTone)} role="status">
             <span className={cn("led", `is-${phase}`)} />
             <span className="label">{statusText}</span>
           </span>
-          <div className="scope-legend" aria-hidden="true">
+          <div className="scope-legend" aria-hidden="true" hidden={!showScope}>
             <span>
               <i /> key
             </span>
@@ -755,7 +896,9 @@ const Transport = memo(function Transport({
             </span>
           </div>
         </div>
-        <CadenceScope typing={typing} phase={phase} paletteKey={paletteKey} />
+        {showScope ? (
+          <CadenceScope typing={typing} phase={phase} paletteKey={paletteKey} />
+        ) : null}
       </div>
 
       <div className="readouts">
@@ -807,6 +950,7 @@ export const TypePage = memo(function TypePage({
   engine,
   lastRun,
   paletteKey,
+  showScope,
   onTextChange,
   onTypingChange,
   onStart,
@@ -818,14 +962,17 @@ export const TypePage = memo(function TypePage({
   const typing = settings.typing;
   // Counting a long script should never hold up a keystroke in the editor.
   const deferredText = useDeferredValue(text);
-  const counts = useMemo<ScriptCounts>(
-    () => ({
-      characters: characterCount(deferredText),
-      words: wordCount(deferredText),
-      seconds: estimateDurationSeconds(deferredText, typing),
-    }),
-    [deferredText, typing],
-  );
+  const scriptCommands = settings.scriptCommands;
+  const counts = useMemo<ScriptCounts>(() => {
+    // Commands aren't typed, so they don't count; pause commands add time.
+    const typed = typedText(deferredText, scriptCommands);
+    const seconds = estimateDurationSeconds(typed.text, typing);
+    return {
+      characters: characterCount(typed.text),
+      words: wordCount(typed.text),
+      seconds: seconds ? seconds + Math.round(typed.pauseMs / 1000) : 0,
+    };
+  }, [deferredText, scriptCommands, typing]);
 
   return (
     <div className="type-page" id="panel-type" role="tabpanel" aria-label="Type">
@@ -836,6 +983,7 @@ export const TypePage = memo(function TypePage({
         total={engine.total}
         counts={counts}
         hotkeyStart={settings.hotkeyStart}
+        scriptCommands={scriptCommands}
         onTextChange={onTextChange}
         notify={notify}
       />
@@ -854,6 +1002,7 @@ export const TypePage = memo(function TypePage({
         hotkeyStart={settings.hotkeyStart}
         hotkeyPause={settings.hotkeyPause}
         paletteKey={paletteKey}
+        showScope={showScope}
         onStart={onStart}
         onStop={onStop}
         onPauseResume={onPauseResume}

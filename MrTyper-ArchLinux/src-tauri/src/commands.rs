@@ -184,3 +184,16 @@ pub fn apply_backdrop_theme(window: WebviewWindow, dark: bool) -> Result<(), Str
 
     Ok(())
 }
+
+/// Whether the updater can replace this install by itself. It can for the
+/// Windows installer, the macOS app and the Linux AppImage; .deb, .rpm and
+/// Arch packages belong to the package manager, so those users are sent to
+/// the download page instead.
+#[tauri::command]
+pub fn can_self_update() -> bool {
+    if cfg!(target_os = "linux") {
+        std::env::var_os("APPIMAGE").is_some()
+    } else {
+        true
+    }
+}

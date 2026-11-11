@@ -1,12 +1,14 @@
 import { AnimatePresence, motion as m } from "framer-motion";
 import {
   AlertTriangle,
+  Download,
   Globe,
   Info,
   Leaf,
   Monitor,
   Moon,
   OctagonX,
+  RefreshCw,
   RotateCcw,
   ShieldCheck,
   Sun,
@@ -22,12 +24,23 @@ import {
 import { Modal } from "../components/Modal";
 import { Button } from "../components/ui/Button";
 import { HotkeyKeycaps } from "../components/ui/Keycap";
+import { NumberField } from "../components/ui/NumberField";
 import { Slider } from "../components/ui/Slider";
 import { Toggle } from "../components/ui/Toggle";
 import { DEFAULT_SETTINGS } from "../lib/defaults";
 import { springSnappy, springSoft } from "../lib/motion";
 import { PLATFORM, type PlatformNote } from "../lib/platform";
-import { ACCENTS, type Accent, type MotionPref } from "../lib/uiPrefs";
+import { COMMAND_GROUPS } from "../lib/scriptCommands";
+import {
+  ACCENTS,
+  EDITOR_SIZE_MAX,
+  EDITOR_SIZE_MIN,
+  type Accent,
+  type EditorFont,
+  type MotionPref,
+  type UiPrefs,
+} from "../lib/uiPrefs";
+import { updateDescription, updateTitle, type UpdateState } from "../lib/updates";
 import {
   acceleratorFromKeyboardEvent,
   cn,
@@ -41,9 +54,16 @@ interface SettingsPageProps {
   running: boolean;
   accent: Accent;
   motion: MotionPref;
+  editorFont: EditorFont;
+  editorSize: number;
+  showScope: boolean;
   systemReducesMotion: boolean;
+  update: UpdateState;
   onAccentChange: (accent: Accent) => void;
   onMotionChange: (motion: MotionPref) => void;
+  onUiPrefsChange: (patch: Partial<UiPrefs>) => void;
+  onCheckUpdates: () => void;
+  onInstallUpdate: () => void;
   onTypingChange: (patch: Partial<TypingSettings>) => void;
   onSettingsChange: (patch: Partial<AppSettings>) => void;
   onResetSettings: () => void;
@@ -60,6 +80,21 @@ const motionOptions: Array<{ id: MotionPref; label: string; icon: typeof Monitor
   { id: "system", label: "System", icon: Monitor },
   { id: "full", label: "Full", icon: Zap },
   { id: "reduced", label: "Reduced", icon: Leaf },
+];
+
+const editorFontOptions: Array<{ id: EditorFont; label: string }> = [
+  { id: "mono", label: "Mono" },
+  { id: "sans", label: "Sans" },
+  { id: "serif", label: "Serif" },
+];
+
+type TypoKindKey = "typoNeighbor" | "typoSwap" | "typoDouble" | "typoSkip";
+
+const TYPO_KINDS: Array<{ key: TypoKindKey; label: string; hint: string }> = [
+  { key: "typoNeighbor", label: "Wrong key", hint: "A neighbouring key: thw for the" },
+  { key: "typoSwap", label: "Swapped", hint: "Two letters swapped: teh for the" },
+  { key: "typoDouble", label: "Doubled", hint: "A letter pressed twice: thhe for the" },
+  { key: "typoSkip", label: "Skipped", hint: "A letter left out: te for the" },
 ];
 
 /** Swatches show each accent as it appears in the dark theme. */
@@ -152,20 +187,70 @@ function EngineRow({
   );
 }
 
-function EngineFader({
+interface ValueFaderProps {
+  label: string;
+  value: number;
+  min: number;
+  max: number;
+  step: number;
+  /** Decimal places the value keeps. */
+  decimals?: number;
+  /** Unit shown while typing a value. */
+  unit?: string;
+  format: (value: number) => string;
+  /** The value read aloud by screen readers. */
+  spoken: (value: number) => string;
+  toInput?: (value: number) => number;
+  fromInput?: (input: number) => number;
+  ariaLabel: string;
+  disabled?: boolean;
+  onChange: (value: number) => void;
+}
+
+/** A labelled fader whose value can be dragged, or clicked and typed. */
+function ValueFader({
   label,
   value,
-  children,
-}: {
-  label: string;
-  value: string;
-  children: ReactNode;
-}) {
+  min,
+  max,
+  step,
+  decimals = 0,
+  unit,
+  format,
+  spoken,
+  toInput,
+  fromInput,
+  ariaLabel,
+  disabled,
+  onChange,
+}: ValueFaderProps) {
   return (
     <div className="engine-fader">
       <span className="engine-fader-label">{label}</span>
-      {children}
-      <span className="engine-fader-value">{value}</span>
+      <Slider
+        min={min}
+        max={max}
+        step={step}
+        value={value}
+        onChange={onChange}
+        ariaLabel={ariaLabel}
+        formatValue={spoken}
+        disabled={disabled}
+      />
+      <NumberField
+        className="engine-fader-value"
+        value={value}
+        min={min}
+        max={max}
+        decimals={decimals}
+        unit={unit}
+        format={format}
+        toInput={toInput}
+        fromInput={fromInput}
+        ariaLabel={ariaLabel}
+        disabled={disabled}
+        onChange={onChange}
+      />
     </div>
   );
 }
@@ -268,9 +353,16 @@ export const SettingsPage = memo(function SettingsPage({
   running,
   accent,
   motion,
+  editorFont,
+  editorSize,
+  showScope,
   systemReducesMotion,
+  update,
   onAccentChange,
   onMotionChange,
+  onUiPrefsChange,
+  onCheckUpdates,
+  onInstallUpdate,
   onTypingChange,
   onSettingsChange,
   onResetSettings,
@@ -287,11 +379,20 @@ export const SettingsPage = memo(function SettingsPage({
       ? `${typing.punctuationFactor.toFixed(1)}× punctuation`
       : "flat punctuation",
     typing.lineBreakEnabled ? `+${typing.lineBreakExtraMs} ms line breaks` : "no line pauses",
+    typing.paragraphEnabled
+      ? `+${(typing.paragraphExtraMs / 1000).toFixed(1)} s paragraphs`
+      : "no paragraph pauses",
+    typing.wordPauseEnabled ? `+${typing.wordPauseMs} ms word gaps` : null,
+    typing.capitalEnabled ? `+${typing.capitalExtraMs} ms capitals` : null,
     typing.thinkingEnabled ? `think every ${typing.thinkingEveryChars}` : "no thinking pauses",
     typing.burstEnabled ? `${typing.burstIntensity}% bursts` : "no bursts",
     typing.typosEnabled ? `${typing.typoChance.toFixed(1)}% typos` : "zero typos",
+    typing.typosEnabled && typing.lateNoticeChance > 0
+      ? `${typing.lateNoticeChance}% noticed late`
+      : null,
+    typing.warmupEnabled ? `warm-up over ${typing.warmupChars}` : null,
     typing.fatigueEnabled ? `+${typing.fatigueDrift}% fatigue` : "no fatigue",
-  ];
+  ].filter((label): label is string => label !== null);
 
   return (
     <div className="page-scroll" id="panel-settings" role="tabpanel" aria-label="Settings">
@@ -401,6 +502,66 @@ export const SettingsPage = memo(function SettingsPage({
               ))}
             </div>
           </Row>
+          <Row title="Script font" description="The typeface of the script editor.">
+            <div className="segmented" role="radiogroup" aria-label="Script font">
+              {editorFontOptions.map((option) => {
+                const active = editorFont === option.id;
+                return (
+                  <button
+                    key={option.id}
+                    type="button"
+                    role="radio"
+                    aria-checked={active}
+                    className={cn("segmented-option", active && "is-active")}
+                    onClick={() => onUiPrefsChange({ editorFont: option.id })}
+                  >
+                    {active ? (
+                      <m.span
+                        layoutId="editor-font-pill"
+                        className="segmented-pill"
+                        transition={springSnappy}
+                      />
+                    ) : null}
+                    <span className={`font-sample is-${option.id}`}>{option.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </Row>
+          <Row title="Script text size" description="How large the script reads on the stage.">
+            <div className="row-fader">
+              <Slider
+                min={EDITOR_SIZE_MIN}
+                max={EDITOR_SIZE_MAX}
+                step={0.5}
+                value={editorSize}
+                onChange={(next) => onUiPrefsChange({ editorSize: next })}
+                ariaLabel="Script text size"
+                formatValue={(value) => `${value} pixels`}
+              />
+              <NumberField
+                className="engine-fader-value"
+                value={editorSize}
+                min={EDITOR_SIZE_MIN}
+                max={EDITOR_SIZE_MAX}
+                decimals={1}
+                unit="px"
+                format={(value) => `${value} px`}
+                ariaLabel="Script text size"
+                onChange={(next) => onUiPrefsChange({ editorSize: next })}
+              />
+            </div>
+          </Row>
+          <Row
+            title="Cadence scope"
+            description="The live rhythm graph in the transport bar. Hide it for a calmer screen."
+          >
+            <Toggle
+              checked={showScope}
+              onChange={(next) => onUiPrefsChange({ showScope: next })}
+              label="Show the cadence scope"
+            />
+          </Row>
           <Row
             title="Always on top"
             description="Keep MrTyper above your other windows while you work."
@@ -441,6 +602,49 @@ export const SettingsPage = memo(function SettingsPage({
 
         <Section
           index={3}
+          title="Script commands"
+          description="Formatting and pauses from inside your script, made for Google Docs."
+          badge={<span className="tag">Google Docs</span>}
+        >
+          <Row
+            title="Run {{…}} commands"
+            description="Write {{bold}}, {{h1}} or {{pause 2}} in a script and MrTyper presses the shortcut or waits instead of typing it. Turn this off to type double braces as written."
+          >
+            <Toggle
+              checked={settings.scriptCommands}
+              onChange={(scriptCommands) => onSettingsChange({ scriptCommands })}
+              label="Run script commands"
+            />
+          </Row>
+          <div className={cn("command-sheet", !settings.scriptCommands && "is-off")}>
+            {COMMAND_GROUPS.map((group) => (
+              <div className="command-sheet-group" key={group.label}>
+                <span className="label">{group.label}</span>
+                <ul>
+                  {group.options.map((option) => (
+                    <li key={option.token}>
+                      <code>{`{{${option.token}}}`}</code>
+                      <span>{option.label}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))}
+          </div>
+          <div className="setting-note">
+            <Info size={15} strokeWidth={1.9} />
+            <span>
+              <strong>Toggles work like the keyboard.</strong> {"{{bold}}"} turns bold on, and the
+              next {"{{bold}}"} turns it off. Any shortcut works too:{" "}
+              {"{{ctrl+shift+k}}"}, {"{{mod+b}}"} (mod is {PLATFORM.id === "macos" ? "⌘" : "Ctrl"}),{" "}
+              {"{{enter}}"}, {"{{tab}}"}, {"{{left}}"}. Braces that aren't a command are typed as written.
+              Insert commands from the {"{ }"} button above the script.
+            </span>
+          </div>
+        </Section>
+
+        <Section
+          index={4}
           title="Safety"
           description="Ways to stop a session the instant something looks wrong."
           badge={
@@ -502,25 +706,26 @@ export const SettingsPage = memo(function SettingsPage({
         </Section>
 
         <Section
-          index={4}
+          index={5}
           title="Humanize engine"
-          description="The art of not quite perfect. Each layer adds a different kind of human texture."
+          description="The art of not quite perfect. Each layer adds a different kind of human texture. Click any value to type it."
         >
           <EngineRow
             title="Keystroke randomness"
             description="How far each key wanders from the average pace."
           >
-            <EngineFader label="Variance" value={`${typing.randomness}%`}>
-              <Slider
-                min={0}
-                max={100}
-                step={1}
-                value={typing.randomness}
-                onChange={(randomness) => onTypingChange({ randomness })}
-                ariaLabel="Keystroke randomness"
-                formatValue={(value) => `${value} percent`}
-              />
-            </EngineFader>
+            <ValueFader
+              label="Variance"
+              value={typing.randomness}
+              min={0}
+              max={100}
+              step={1}
+              unit="%"
+              format={(value) => `${value}%`}
+              spoken={(value) => `${value} percent`}
+              ariaLabel="Keystroke randomness"
+              onChange={(randomness) => onTypingChange({ randomness })}
+            />
           </EngineRow>
 
           <EngineRow
@@ -529,18 +734,20 @@ export const SettingsPage = memo(function SettingsPage({
             enabled={typing.punctuationEnabled}
             onToggle={(punctuationEnabled) => onTypingChange({ punctuationEnabled })}
           >
-            <EngineFader label="Intensity" value={`${typing.punctuationFactor.toFixed(1)}×`}>
-              <Slider
-                min={1}
-                max={4}
-                step={0.1}
-                value={typing.punctuationFactor}
-                onChange={(punctuationFactor) => onTypingChange({ punctuationFactor })}
-                ariaLabel="Punctuation pause intensity"
-                formatValue={(value) => `${value.toFixed(1)} times`}
-                disabled={!typing.punctuationEnabled}
-              />
-            </EngineFader>
+            <ValueFader
+              label="Intensity"
+              value={typing.punctuationFactor}
+              min={1}
+              max={4}
+              step={0.1}
+              decimals={1}
+              unit="×"
+              format={(value) => `${value.toFixed(1)}×`}
+              spoken={(value) => `${value.toFixed(1)} times`}
+              ariaLabel="Punctuation pause intensity"
+              disabled={!typing.punctuationEnabled}
+              onChange={(punctuationFactor) => onTypingChange({ punctuationFactor })}
+            />
           </EngineRow>
 
           <EngineRow
@@ -549,18 +756,85 @@ export const SettingsPage = memo(function SettingsPage({
             enabled={typing.lineBreakEnabled}
             onToggle={(lineBreakEnabled) => onTypingChange({ lineBreakEnabled })}
           >
-            <EngineFader label="Extra" value={`${typing.lineBreakExtraMs} ms`}>
-              <Slider
-                min={80}
-                max={1500}
-                step={20}
-                value={typing.lineBreakExtraMs}
-                onChange={(lineBreakExtraMs) => onTypingChange({ lineBreakExtraMs })}
-                ariaLabel="Line break pause in milliseconds"
-                formatValue={(value) => `${value} milliseconds`}
-                disabled={!typing.lineBreakEnabled}
-              />
-            </EngineFader>
+            <ValueFader
+              label="Extra"
+              value={typing.lineBreakExtraMs}
+              min={80}
+              max={1500}
+              step={20}
+              unit="ms"
+              format={(value) => `${value} ms`}
+              spoken={(value) => `${value} milliseconds`}
+              ariaLabel="Line break pause in milliseconds"
+              disabled={!typing.lineBreakEnabled}
+              onChange={(lineBreakExtraMs) => onTypingChange({ lineBreakExtraMs })}
+            />
+          </EngineRow>
+
+          <EngineRow
+            title="Paragraph pauses"
+            description="A longer breath at a blank line, as if starting a new thought."
+            enabled={typing.paragraphEnabled}
+            onToggle={(paragraphEnabled) => onTypingChange({ paragraphEnabled })}
+          >
+            <ValueFader
+              label="Extra"
+              value={typing.paragraphExtraMs}
+              min={100}
+              max={6000}
+              step={50}
+              unit="s"
+              decimals={0}
+              toInput={(value) => value / 1000}
+              fromInput={(value) => value * 1000}
+              format={(value) => `${(value / 1000).toFixed(1)} s`}
+              spoken={(value) => `${(value / 1000).toFixed(1)} seconds`}
+              ariaLabel="Paragraph pause"
+              disabled={!typing.paragraphEnabled}
+              onChange={(paragraphExtraMs) => onTypingChange({ paragraphExtraMs })}
+            />
+          </EngineRow>
+
+          <EngineRow
+            title="Word gaps"
+            description="A small beat after each space, between words."
+            enabled={typing.wordPauseEnabled}
+            onToggle={(wordPauseEnabled) => onTypingChange({ wordPauseEnabled })}
+          >
+            <ValueFader
+              label="Gap"
+              value={typing.wordPauseMs}
+              min={5}
+              max={500}
+              step={5}
+              unit="ms"
+              format={(value) => `${value} ms`}
+              spoken={(value) => `${value} milliseconds`}
+              ariaLabel="Pause between words"
+              disabled={!typing.wordPauseEnabled}
+              onChange={(wordPauseMs) => onTypingChange({ wordPauseMs })}
+            />
+          </EngineRow>
+
+          <EngineRow
+            title="Capital letters"
+            description="Extra time to reach for Shift before a capital."
+            enabled={typing.capitalEnabled}
+            onToggle={(capitalEnabled) => onTypingChange({ capitalEnabled })}
+          >
+            <ValueFader
+              label="Reach"
+              value={typing.capitalExtraMs}
+              min={5}
+              max={400}
+              step={5}
+              unit="ms"
+              format={(value) => `+${value} ms`}
+              spoken={(value) => `${value} milliseconds`}
+              ariaLabel="Extra time before a capital letter"
+              disabled={!typing.capitalEnabled}
+              onChange={(capitalExtraMs) => onTypingChange({ capitalExtraMs })}
+            />
           </EngineRow>
 
           <EngineRow
@@ -569,33 +843,34 @@ export const SettingsPage = memo(function SettingsPage({
             enabled={typing.thinkingEnabled}
             onToggle={(thinkingEnabled) => onTypingChange({ thinkingEnabled })}
           >
-            <EngineFader label="Every" value={`${typing.thinkingEveryChars} ch`}>
-              <Slider
-                min={20}
-                max={400}
-                step={5}
-                value={typing.thinkingEveryChars}
-                onChange={(thinkingEveryChars) => onTypingChange({ thinkingEveryChars })}
-                ariaLabel="Thinking pause frequency in characters"
-                formatValue={(value) => `every ${value} characters`}
-                disabled={!typing.thinkingEnabled}
-              />
-            </EngineFader>
-            <EngineFader
+            <ValueFader
+              label="Every"
+              value={typing.thinkingEveryChars}
+              min={20}
+              max={400}
+              step={5}
+              unit="ch"
+              format={(value) => `${value} ch`}
+              spoken={(value) => `every ${value} characters`}
+              ariaLabel="Thinking pause frequency in characters"
+              disabled={!typing.thinkingEnabled}
+              onChange={(thinkingEveryChars) => onTypingChange({ thinkingEveryChars })}
+            />
+            <ValueFader
               label="Up to"
-              value={`${(typing.thinkingPauseMaxMs / 1000).toFixed(1)} s`}
-            >
-              <Slider
-                min={300}
-                max={5000}
-                step={100}
-                value={typing.thinkingPauseMaxMs}
-                onChange={(thinkingPauseMaxMs) => onTypingChange({ thinkingPauseMaxMs })}
-                ariaLabel="Maximum thinking pause duration"
-                formatValue={(value) => `${(value / 1000).toFixed(1)} seconds`}
-                disabled={!typing.thinkingEnabled}
-              />
-            </EngineFader>
+              value={typing.thinkingPauseMaxMs}
+              min={300}
+              max={5000}
+              step={100}
+              unit="s"
+              toInput={(value) => value / 1000}
+              fromInput={(value) => value * 1000}
+              format={(value) => `${(value / 1000).toFixed(1)} s`}
+              spoken={(value) => `${(value / 1000).toFixed(1)} seconds`}
+              ariaLabel="Maximum thinking pause duration"
+              disabled={!typing.thinkingEnabled}
+              onChange={(thinkingPauseMaxMs) => onTypingChange({ thinkingPauseMaxMs })}
+            />
           </EngineRow>
 
           <EngineRow
@@ -604,38 +879,125 @@ export const SettingsPage = memo(function SettingsPage({
             enabled={typing.burstEnabled}
             onToggle={(burstEnabled) => onTypingChange({ burstEnabled })}
           >
-            <EngineFader label="Surge" value={`${typing.burstIntensity}%`}>
-              <Slider
-                min={10}
-                max={100}
-                step={1}
-                value={typing.burstIntensity}
-                onChange={(burstIntensity) => onTypingChange({ burstIntensity })}
-                ariaLabel="Burst typing intensity"
-                formatValue={(value) => `${value} percent`}
-                disabled={!typing.burstEnabled}
-              />
-            </EngineFader>
+            <ValueFader
+              label="Surge"
+              value={typing.burstIntensity}
+              min={10}
+              max={100}
+              step={1}
+              unit="%"
+              format={(value) => `${value}%`}
+              spoken={(value) => `${value} percent`}
+              ariaLabel="Burst typing intensity"
+              disabled={!typing.burstEnabled}
+              onChange={(burstIntensity) => onTypingChange({ burstIntensity })}
+            />
+          </EngineRow>
+
+          <EngineRow
+            title="Warm-up"
+            description="Start a little slow and settle into full speed."
+            enabled={typing.warmupEnabled}
+            onToggle={(warmupEnabled) => onTypingChange({ warmupEnabled })}
+          >
+            <ValueFader
+              label="Over"
+              value={typing.warmupChars}
+              min={20}
+              max={1000}
+              step={10}
+              unit="ch"
+              format={(value) => `${value} ch`}
+              spoken={(value) => `over ${value} characters`}
+              ariaLabel="Warm-up length in characters"
+              disabled={!typing.warmupEnabled}
+              onChange={(warmupChars) => onTypingChange({ warmupChars })}
+            />
           </EngineRow>
 
           <EngineRow
             title="Typo simulation"
-            description="A neighbouring QWERTY key, a beat, a backspace, then the fix."
+            description="A slip, a beat, then backspaces and the fix. Pick which slips can happen."
             enabled={typing.typosEnabled}
             onToggle={(typosEnabled) => onTypingChange({ typosEnabled })}
           >
-            <EngineFader label="Chance" value={`${typing.typoChance.toFixed(1)}%`}>
-              <Slider
-                min={0.5}
-                max={15}
-                step={0.5}
-                value={typing.typoChance}
-                onChange={(typoChance) => onTypingChange({ typoChance })}
-                ariaLabel="Typo chance per character"
-                formatValue={(value) => `${value.toFixed(1)} percent`}
-                disabled={!typing.typosEnabled}
-              />
-            </EngineFader>
+            <ValueFader
+              label="Chance"
+              value={typing.typoChance}
+              min={0.5}
+              max={15}
+              step={0.5}
+              decimals={1}
+              unit="%"
+              format={(value) => `${value.toFixed(1)}%`}
+              spoken={(value) => `${value.toFixed(1)} percent`}
+              ariaLabel="Typo chance per character"
+              disabled={!typing.typosEnabled}
+              onChange={(typoChance) => onTypingChange({ typoChance })}
+            />
+            <div className="engine-fader">
+              <span className="engine-fader-label">Kinds</span>
+              <div className="chip-row" role="group" aria-label="Kinds of typo">
+                {TYPO_KINDS.map((kind) => {
+                  const on = typing[kind.key];
+                  const onlyOne = on && TYPO_KINDS.filter((other) => typing[other.key]).length === 1;
+                  return (
+                    <button
+                      key={kind.key}
+                      type="button"
+                      className={cn("chip", on && "is-on")}
+                      aria-pressed={on}
+                      title={onlyOne ? "At least one kind stays on" : kind.hint}
+                      disabled={!typing.typosEnabled}
+                      onClick={() => {
+                        if (!onlyOne) onTypingChange({ [kind.key]: !on });
+                      }}
+                    >
+                      {kind.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+            <ValueFader
+              label="Late"
+              value={typing.lateNoticeChance}
+              min={0}
+              max={60}
+              step={1}
+              unit="%"
+              format={(value) => `${value}%`}
+              spoken={(value) => `${value} percent of typos noticed a few keys late`}
+              ariaLabel="Typos noticed late"
+              disabled={!typing.typosEnabled}
+              onChange={(lateNoticeChance) => onTypingChange({ lateNoticeChance })}
+            />
+            <ValueFader
+              label="Notice"
+              value={typing.typoReactionMs}
+              min={40}
+              max={1500}
+              step={10}
+              unit="ms"
+              format={(value) => `${value} ms`}
+              spoken={(value) => `${value} milliseconds before fixing`}
+              ariaLabel="Pause before fixing a typo"
+              disabled={!typing.typosEnabled}
+              onChange={(typoReactionMs) => onTypingChange({ typoReactionMs })}
+            />
+            <ValueFader
+              label="Backspace"
+              value={typing.backspaceMs}
+              min={30}
+              max={400}
+              step={5}
+              unit="ms"
+              format={(value) => `${value} ms`}
+              spoken={(value) => `${value} milliseconds per backspace`}
+              ariaLabel="Time per backspace"
+              disabled={!typing.typosEnabled}
+              onChange={(backspaceMs) => onTypingChange({ backspaceMs })}
+            />
           </EngineRow>
 
           <EngineRow
@@ -644,18 +1006,19 @@ export const SettingsPage = memo(function SettingsPage({
             enabled={typing.fatigueEnabled}
             onToggle={(fatigueEnabled) => onTypingChange({ fatigueEnabled })}
           >
-            <EngineFader label="Slow-down" value={`+${typing.fatigueDrift}%`}>
-              <Slider
-                min={0}
-                max={40}
-                step={1}
-                value={typing.fatigueDrift}
-                onChange={(fatigueDrift) => onTypingChange({ fatigueDrift })}
-                ariaLabel="Fatigue drift percentage"
-                formatValue={(value) => `${value} percent`}
-                disabled={!typing.fatigueEnabled}
-              />
-            </EngineFader>
+            <ValueFader
+              label="Slow-down"
+              value={typing.fatigueDrift}
+              min={0}
+              max={40}
+              step={1}
+              unit="%"
+              format={(value) => `+${value}%`}
+              spoken={(value) => `${value} percent`}
+              ariaLabel="Fatigue drift percentage"
+              disabled={!typing.fatigueEnabled}
+              onChange={(fatigueDrift) => onTypingChange({ fatigueDrift })}
+            />
           </EngineRow>
 
           <div className="summary-tags" style={{ borderTop: "1px solid var(--line)" }}>
@@ -668,18 +1031,52 @@ export const SettingsPage = memo(function SettingsPage({
         </Section>
 
         <Section
-          index={5}
+          index={6}
+          title="Updates"
+          description="New versions come from the MrTyper releases on GitHub."
+          badge={<span className="tag num">v{__APP_VERSION__}</span>}
+        >
+          <Row title="Check when MrTyper opens" description="Asks GitHub for the latest version. Nothing is installed until you say so.">
+            <Toggle
+              checked={settings.checkUpdates}
+              onChange={(checkUpdates) => onSettingsChange({ checkUpdates })}
+              label="Check for updates when MrTyper opens"
+            />
+          </Row>
+          <Row title={updateTitle(update)} description={updateDescription(update)}>
+            {update.status === "available" ? (
+              <Button variant="primary" icon={Download} onClick={onInstallUpdate}>
+                {update.canInstall ? `Update to ${update.version}` : "Open download page"}
+              </Button>
+            ) : (
+              <Button
+                icon={RefreshCw}
+                onClick={onCheckUpdates}
+                disabled={
+                  update.status === "checking" ||
+                  update.status === "downloading" ||
+                  update.status === "installed" ||
+                  update.status === "unsupported"
+                }
+              >
+                {update.status === "checking" ? "Checking…" : "Check now"}
+              </Button>
+            )}
+          </Row>
+        </Section>
+
+        <Section
+          index={7}
           title="About"
           description="Small, private, precise."
-          badge={<span className="tag num">v{__APP_VERSION__}</span>}
         >
           <Row
             title={PLATFORM.productLabel}
             description="Tauri 2 with a native Rust engine. Keys are sent as real Unicode input."
           />
           <Row
-            title="Local only"
-            description="No accounts, no analytics, no network calls. Settings live in a single JSON file in your app config folder."
+            title="Private"
+            description="No accounts and no analytics. The update check is the only network request, and you can turn it off above. Settings live in a single JSON file in your app config folder."
           />
         </Section>
 

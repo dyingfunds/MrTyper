@@ -32,6 +32,29 @@ export interface TypingSettings {
   fatigueEnabled: boolean;
   /** 0–40 percent slow-down across the text */
   fatigueDrift: number;
+  /** Which kinds of typo may happen; at least one stays on. */
+  typoNeighbor: boolean;
+  typoSwap: boolean;
+  typoDouble: boolean;
+  typoSkip: boolean;
+  /** 0–60 percent of typos noticed one to three keys late */
+  lateNoticeChance: number;
+  /** 40–1500 ms between a typo and the first backspace */
+  typoReactionMs: number;
+  /** 30–400 ms per backspace */
+  backspaceMs: number;
+  paragraphEnabled: boolean;
+  /** 100–6000 ms extra at a blank line */
+  paragraphExtraMs: number;
+  wordPauseEnabled: boolean;
+  /** 5–500 ms average extra after each space */
+  wordPauseMs: number;
+  capitalEnabled: boolean;
+  /** 5–400 ms average extra before a capital letter */
+  capitalExtraMs: number;
+  warmupEnabled: boolean;
+  /** 20–1000 characters to reach full speed */
+  warmupChars: number;
 }
 
 export interface AppSettings {
@@ -42,6 +65,10 @@ export interface AppSettings {
   stopOnFocusLoss: boolean;
   hotkeyStart: string;
   hotkeyPause: string;
+  /** Run {{…}} commands in scripts instead of typing them. */
+  scriptCommands: boolean;
+  /** Look for a new version when MrTyper opens. */
+  checkUpdates: boolean;
 }
 
 export interface Preset {

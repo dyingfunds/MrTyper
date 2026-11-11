@@ -10,9 +10,16 @@ It is the same app as the Windows version: same interface, presets, humanize eng
 
 1. Download `MrTyper_…_universal.dmg` from the **[latest release](https://github.com/dyingfunds/MrTyper/releases/latest)** and open it. It's ready to use, so you don't need to build anything.
 2. Drag **MrTyper** into **Applications**.
-3. The app is ad-hoc signed, not notarised by Apple, so the first launch is blocked. Either:
-   - right-click (or Control-click) MrTyper in Applications, choose **Open**, then **Open** again; or
-   - run `xattr -dr com.apple.quarantine /Applications/MrTyper.app` in Terminal.
+3. The app is ad-hoc signed, not notarised by Apple, so macOS blocks the first launch. Allow it once:
+   - **macOS 15 Sequoia and later:**
+     1. Open MrTyper. macOS says it can't verify the app; click **Done**.
+     2. Open **System Settings → Privacy & Security** and scroll down to **Security**.
+     3. Next to "MrTyper was blocked to protect your Mac", click **Open Anyway**, and confirm with your password or Touch ID.
+     4. Click **Open Anyway** in the dialog that follows.
+
+     The button appears only for about an hour after the blocked attempt. If it's missing, open MrTyper again first.
+   - **macOS 11 to 14:** right-click (or Control-click) MrTyper in Applications, choose **Open**, then **Open** again.
+   - **Any version, from Terminal:** run `xattr -dr com.apple.quarantine /Applications/MrTyper.app`, then open MrTyper normally.
 4. **Grant Accessibility access.** The first time you start typing, macOS asks whether MrTyper may control your computer.
    - Open **System Settings → Privacy & Security → Accessibility** and turn **MrTyper** on.
    - Then press Start again.
@@ -24,6 +31,8 @@ macOS requires this permission for any app that types into other apps. MrTyper c
 - **Shortcuts.** F8 starts or stops, F9 pauses. On Mac keyboards the function keys control media by default, so hold **fn**, or rebind to a chord such as Ctrl + Shift + Space in Setup → Shortcuts. **Esc** is the emergency stop while a session runs.
 - **Focus guard.** "Stop when focus leaves" stops a run when you switch to a different app. macOS doesn't let apps see other apps' windows without Screen Recording permission, so switching windows *inside* the same app is not detected.
 - **Closing the window hides MrTyper** to the menu bar. Click its Dock icon, or the menu bar icon, to bring it back. Quit from the menu bar icon or with ⌘Q.
+- **Script commands** such as `{{bold}}`, `{{h1}}` and `{{bigger}}` send the Mac Google Docs shortcuts (⌘B, ⌘⌥1, ⌘⇧.). `{{mod+…}}` uses ⌘. The full list is in the [main README](../README.md#script-commands-google-docs-formatting).
+- **Updates.** MrTyper checks for a new version when it opens and installs it only when you click **Update**. Because the app is ad-hoc signed, macOS treats each new version as a different app: after updating, turn **MrTyper** off and on again in **Privacy & Security → Accessibility** (or remove it with **–** and add it back).
 - Settings, presets and your script are saved to `~/Library/Application Support/com.mrtyper.desktop/mrtyper.json`.
 
 ## Build from source
@@ -58,6 +67,7 @@ cargo test --manifest-path src-tauri/Cargo.toml
 
 - **"MrTyper needs Accessibility access" even after allowing it:** macOS ties the permission to the exact app build. After installing a new version, remove MrTyper from the Accessibility list with the **–** button, then add it again.
 - **"MrTyper is damaged and can't be opened":** that's the quarantine flag on an unnotarised download. Run the `xattr` command from step 3.
+- **Right-click → Open doesn't offer an Open button:** you're on macOS 15 or later, where Apple removed that shortcut. Use **Open Anyway** in **System Settings → Privacy & Security** instead (step 3).
 
 ## How it differs from the Windows build
 

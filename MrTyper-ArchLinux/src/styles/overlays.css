@@ -363,3 +363,88 @@
 #overlay-root {
   display: contents;
 }
+
+/* Update banner ------------------------------------------------------ */
+
+.update-banner {
+  position: absolute;
+  top: 52px;
+  right: 18px;
+  z-index: 70;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: min(420px, calc(100% - 36px));
+  padding: 12px 12px 12px 14px;
+  border: 1px solid var(--accent-line);
+  border-radius: var(--radius-control);
+  background: var(--surface-2);
+  box-shadow: var(--shadow-pop);
+}
+
+.update-banner-icon {
+  flex: none;
+  color: var(--accent-text);
+}
+
+.update-banner-copy {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.update-banner-copy strong {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.update-banner-copy span {
+  color: var(--text-3);
+  font-size: 11.5px;
+}
+
+.update-banner-bar {
+  height: 3px;
+  margin-top: 6px;
+  overflow: hidden;
+  border-radius: 2px;
+  background: var(--track);
+}
+
+.update-banner-bar i {
+  display: block;
+  height: 100%;
+  background: var(--accent-mark);
+  transition: width 200ms ease;
+}
+
+/* Size unknown: a still, partial bar rather than an endless animation. */
+.update-banner-bar i.is-indeterminate {
+  width: 35%;
+  opacity: 0.6;
+}
+
+.update-banner-actions {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 4px;
+}
+
+.update-banner-close {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: var(--radius-small);
+  background: transparent;
+  color: var(--text-3);
+}
+
+.update-banner-close:hover {
+  background: var(--surface-4);
+  color: var(--text);
+}

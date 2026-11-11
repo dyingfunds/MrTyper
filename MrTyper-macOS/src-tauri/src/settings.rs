@@ -29,6 +29,30 @@ pub struct TypingSettings {
     pub typo_chance: f64,
     pub fatigue_enabled: bool,
     pub fatigue_drift: f64,
+    /// Which kinds of typo may happen. When all are off, neighbour-key typos
+    /// are used.
+    pub typo_neighbor: bool,
+    pub typo_swap: bool,
+    pub typo_double: bool,
+    pub typo_skip: bool,
+    /// Percent of typos noticed only after one to three more characters.
+    pub late_notice_chance: f64,
+    /// Pause between making a typo and starting to fix it.
+    pub typo_reaction_ms: u64,
+    /// Time per backspace while fixing a typo.
+    pub backspace_ms: u64,
+    pub paragraph_enabled: bool,
+    /// Extra pause at a blank line, on top of the line-break pause.
+    pub paragraph_extra_ms: u64,
+    pub word_pause_enabled: bool,
+    /// Average extra pause after each space.
+    pub word_pause_ms: u64,
+    pub capital_enabled: bool,
+    /// Average extra time to reach for Shift before a capital letter.
+    pub capital_extra_ms: u64,
+    pub warmup_enabled: bool,
+    /// Characters over which the pace builds from slow to full speed.
+    pub warmup_chars: u32,
 }
 
 impl Default for TypingSettings {
@@ -51,6 +75,21 @@ impl Default for TypingSettings {
             typo_chance: 2.5,
             fatigue_enabled: false,
             fatigue_drift: 18.0,
+            typo_neighbor: true,
+            typo_swap: true,
+            typo_double: true,
+            typo_skip: true,
+            late_notice_chance: 20.0,
+            typo_reaction_ms: 140,
+            backspace_ms: 80,
+            paragraph_enabled: true,
+            paragraph_extra_ms: 1_100,
+            word_pause_enabled: false,
+            word_pause_ms: 60,
+            capital_enabled: true,
+            capital_extra_ms: 60,
+            warmup_enabled: false,
+            warmup_chars: 160,
         }
     }
 }
@@ -91,10 +130,21 @@ impl TypingSettings {
         self.fatigue_drift = finite(self.fatigue_drift, defaults.fatigue_drift)
             .round()
             .clamp(0.0, 40.0);
+        if !(self.typo_neighbor || self.typo_swap || self.typo_double || self.typo_skip) {
+            self.typo_neighbor = true;
+        }
+        self.late_notice_chance = finite(self.late_notice_chance, defaults.late_notice_chance)
+            .round()
+            .clamp(0.0, 60.0);
+        self.typo_reaction_ms = self.typo_reaction_ms.clamp(40, 1_500);
+        self.backspace_ms = self.backspace_ms.clamp(30, 400);
+        self.paragraph_extra_ms = self.paragraph_extra_ms.clamp(100, 6_000);
+        self.word_pause_ms = self.word_pause_ms.clamp(5, 500);
+        self.capital_extra_ms = self.capital_extra_ms.clamp(5, 400);
+        self.warmup_chars = self.warmup_chars.clamp(20, 1_000);
 
         self
     }
-
 }
 
 impl Default for AppSettings {
@@ -107,6 +157,8 @@ impl Default for AppSettings {
             stop_on_focus_loss: true,
             hotkey_start: "F8".into(),
             hotkey_pause: "F9".into(),
+            script_commands: true,
+            check_updates: true,
         }
     }
 }
@@ -121,6 +173,11 @@ pub struct AppSettings {
     pub stop_on_focus_loss: bool,
     pub hotkey_start: String,
     pub hotkey_pause: String,
+    /// Run `{{…}}` commands in scripts (shortcuts and pauses) instead of
+    /// typing them.
+    pub script_commands: bool,
+    /// Look for a new version on GitHub when MrTyper opens.
+    pub check_updates: bool,
 }
 
 impl AppSettings {
@@ -304,6 +361,13 @@ mod tests {
             thinking_pause_max_ms: 10,
             typo_chance: 99.0,
             fatigue_drift: -10.0,
+            typo_neighbor: false,
+            typo_swap: false,
+            typo_double: false,
+            typo_skip: false,
+            late_notice_chance: 90.0,
+            backspace_ms: 1,
+            warmup_chars: 5_000,
             ..TypingSettings::default()
         }
         .normalized();
@@ -317,6 +381,10 @@ mod tests {
         assert_eq!(normalized.thinking_pause_max_ms, 300);
         assert_eq!(normalized.typo_chance, 15.0);
         assert_eq!(normalized.fatigue_drift, 0.0);
+        assert!(normalized.typo_neighbor, "at least one typo kind stays on");
+        assert_eq!(normalized.late_notice_chance, 60.0);
+        assert_eq!(normalized.backspace_ms, 30);
+        assert_eq!(normalized.warmup_chars, 1_000);
     }
 
     #[test]

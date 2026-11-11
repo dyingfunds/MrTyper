@@ -1,6 +1,6 @@
 [package]
 name = "mrtyper"
-version = "2.0.0"
+version = "2.1.0"
 description = "Human-paced typing into any macOS app"
 authors = ["MrTyper"]
 license = "MIT"
@@ -21,6 +21,9 @@ tauri-build = { version = "2", features = [] }
 tauri = { version = "2", features = ["tray-icon"] }
 tauri-plugin-global-shortcut = "2"
 tauri-plugin-single-instance = "2"
+tauri-plugin-updater = "2"
+tauri-plugin-process = "2"
+tauri-plugin-opener = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 rand = "0.8.5"

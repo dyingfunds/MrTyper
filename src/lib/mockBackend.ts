@@ -16,6 +16,7 @@ import {
   normalizeSettings,
   normalizeTyping,
 } from "./defaults";
+import { splitScript } from "./scriptCommands";
 
 const STORAGE_KEY = "mrtyper.browser-preview.v1";
 const DEMO_TEXT =
@@ -32,6 +33,8 @@ interface MockRun {
   runId: number;
   text: string;
   chars: string[];
+  /** Commands by the code-point offset they start at: length and pause. */
+  commands: Map<number, { length: number; pauseMs: number }>;
   settings: AppSettings;
   index: number;
   phase: Phase;
@@ -139,11 +142,21 @@ class MockBackend {
     this.persist();
 
     const chars = Array.from(text);
+    const commands = new Map<number, { length: number; pauseMs: number }>();
+    let offset = 0;
+    for (const piece of splitScript(text, this.state.settings.scriptCommands)) {
+      const length = Array.from(piece.text).length;
+      if (piece.command) {
+        commands.set(offset, { length, pauseMs: piece.command.pauseMs ?? 0 });
+      }
+      offset += length;
+    }
     const countdown = this.state.settings.typing.startDelaySecs;
     const run: MockRun = {
       runId: this.nextRunId++,
       text,
       chars,
+      commands,
       settings: structuredClone(this.state.settings),
       index: 0,
       phase: "countdown",
@@ -329,6 +342,27 @@ class MockBackend {
     const char = run.chars[run.index];
     if (char === undefined) {
       this.finish(run, "completed");
+      return;
+    }
+
+    // A command is pressed (or waited out) in one step, never typed.
+    const command = run.commands.get(run.index);
+    if (command) {
+      run.index += command.length;
+      this.emit("typing-keystroke", { runId: run.runId, index: run.index, kind: "key" });
+      this.emit("typing-progress", {
+        runId: run.runId,
+        typed: run.index,
+        total: run.chars.length,
+        wpm: this.currentWpm(run),
+        etaSecs: null,
+        elapsedMs: run.startedAt === null ? 0 : performance.now() - run.startedAt,
+      });
+      if (run.index >= run.chars.length) {
+        this.finish(run, "completed");
+        return;
+      }
+      this.scheduleNext(run, command.pauseMs || 220);
       return;
     }
 

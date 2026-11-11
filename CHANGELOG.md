@@ -4,6 +4,19 @@ All notable changes to MrTyper. The format follows [Keep a Changelog](https://ke
 
 ## [Unreleased]
 
+## [2.1.0] - 2026-11-11
+
+Script commands for Google Docs, in-app updates, typed slider values and more ways to sound human. Ready-made installers for every platform are on the [GitHub release](https://github.com/dyingfunds/MrTyper/releases/tag/v2.1.0). 2.0.0 has no updater, so install this version by hand once; later versions arrive through the app.
+
+### Added
+
+- **Script commands for Google Docs.** Write `{{bold}}`, `{{italic}}`, `{{underline}}`, `{{bigger}}`, `{{h1}}`, `{{bullets}}`, `{{center}}` and more in a script, and MrTyper presses the Google Docs shortcut instead of typing the text. Raw shortcuts (`{{ctrl+shift+k}}`, `{{mod+b}}`, `{{enter}}`) and pauses (`{{pause 2}}`) work too. A **{ }** button above the script inserts them, and **Setup → Script commands** lists them or turns them off. On macOS they send the Mac shortcuts.
+- **Updates.** MrTyper checks GitHub for a new version when it opens and offers to install it; nothing installs until you click Update. The Windows installer, the macOS app and the Linux AppImage update in place; the `.deb`, `.rpm` and Arch packages open the download page. Updates are signature-checked. The check can be turned off in **Setup → Updates**.
+- **Type any slider value.** Click the number next to any slider (tempo, head start, randomness and every Setup fader) and type a value. Enter applies it, Esc cancels, and out-of-range values snap to the limit.
+- **Smarter typos:** swapped, doubled and skipped letters as well as neighbouring keys, each switchable; typos sometimes noticed a few keys late and fixed with several backspaces; adjustable pause before fixing and backspace speed.
+- **More pauses:** paragraph pauses at blank lines, gaps between words, extra reach time before capitals, and a warm-up that starts slow.
+- **Editor look:** script font (mono, sans or serif), text size, and an option to hide the cadence scope.
+
 ### Changed
 
 - **Consolidated the platform layer.** The three apps now differ only in their designated platform files:
@@ -28,6 +41,7 @@ All notable changes to MrTyper. The format follows [Keep a Changelog](https://ke
 ### Fixed
 
 - Clippy warnings in the settings and store tests.
+- **macOS install steps:** since macOS 15 Sequoia, right-click → Open no longer gets past Gatekeeper. The READMEs and release notes now explain **System Settings → Privacy & Security → Open Anyway**, and keep the right-click step for macOS 11–14.
 
 ## [2.0.0] - 2026-11-09
 
@@ -91,5 +105,6 @@ The redesign release, and the first with macOS and Linux apps. Ready-made instal
 
 Initial release: a Windows app with a liquid-glass interface, the human-cadence typing engine, presets, global hotkeys, the tray, and an NSIS installer.
 
-[Unreleased]: https://github.com/dyingfunds/MrTyper/compare/v2.0.0...HEAD
+[Unreleased]: https://github.com/dyingfunds/MrTyper/compare/v2.1.0...HEAD
+[2.1.0]: https://github.com/dyingfunds/MrTyper/compare/v2.0.0...v2.1.0
 [2.0.0]: https://github.com/dyingfunds/MrTyper/releases/tag/v2.0.0

@@ -533,3 +533,62 @@
   border-color: var(--accent-line);
   box-shadow: 0 0 0 3px var(--accent-soft);
 }
+
+/* ------------------------------------------------------------------ */
+/*  Editable values                                                    */
+/*  A slider's read-out that can be clicked and typed into.           */
+/* ------------------------------------------------------------------ */
+
+.num-field {
+  display: inline-flex;
+  align-items: baseline;
+  justify-content: flex-end;
+  gap: 3px;
+  margin: -2px -5px;
+  padding: 2px 5px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-small);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  cursor: text;
+  transition:
+    background 140ms ease,
+    border-color 140ms ease;
+}
+
+button.num-field:hover:not(:disabled) {
+  border-color: var(--line-2);
+  background: var(--surface-3);
+}
+
+button.num-field:disabled {
+  cursor: default;
+}
+
+.num-field.is-editing {
+  border-color: var(--accent-line);
+  background: var(--surface-3);
+  cursor: auto;
+}
+
+.num-field-input {
+  min-width: 2ch;
+  max-width: 7ch;
+  padding: 0;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.num-field-unit {
+  color: var(--text-3);
+  font-size: 0.85em;
+  font-weight: 500;
+}
