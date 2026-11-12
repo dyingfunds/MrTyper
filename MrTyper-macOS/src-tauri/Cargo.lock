@@ -2208,7 +2208,7 @@ dependencies = [
 
 [[package]]
 name = "mrtyper"
-version = "2.1.0"
+version = "2.1.1"
 dependencies = [
  "enigo",
  "objc2",

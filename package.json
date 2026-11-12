@@ -1,7 +1,7 @@
 {
   "name": "mrtyper",
   "private": true,
-  "version": "2.1.0",
+  "version": "2.1.1",
   "description": "Human-paced typing into any Windows window.",
   "license": "MIT",
   "author": "MrTyper contributors",

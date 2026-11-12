@@ -1,6 +1,6 @@
 @echo off
 setlocal
-set "SETUP=%~dp0MrTyper_2.1.0_x64-setup.exe"
+set "SETUP=%~dp0MrTyper_2.1.1_x64-setup.exe"
 if not exist "%SETUP%" (
   echo MrTyper setup was not found next to this helper.
   pause

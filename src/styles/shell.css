@@ -503,3 +503,14 @@
 :root[data-platform="linux"] .frame::after {
   border-radius: 0;
 }
+
+/* Easter egg: the Konami code spins the logo once (see lib/easterEgg.ts). */
+@keyframes brand-celebrate {
+  0% { transform: rotate(0) scale(1); }
+  45% { transform: rotate(200deg) scale(1.25); }
+  100% { transform: rotate(360deg) scale(1); }
+}
+
+html.is-celebrating:not(.reduce-motion) .brand-mark {
+  animation: brand-celebrate 900ms var(--ease-out) both;
+}

@@ -125,7 +125,7 @@ For UI-only work, run `pnpm dev` in a browser. The app automatically uses a loca
 
 A self-contained Windows x64 installer is included in the repository:
 
-**[release/MrTyper_2.1.0_x64-setup.exe](release/MrTyper_2.1.0_x64-setup.exe)**
+**[release/MrTyper_2.1.1_x64-setup.exe](release/MrTyper_2.1.1_x64-setup.exe)**
 
 1. Verify the file against [release/SHA256SUMS.txt](release/SHA256SUMS.txt).
 2. Double-click the setup and approve Windows SmartScreen if you trust the build.
@@ -146,7 +146,7 @@ This runs [scripts/build-release.mjs](scripts/build-release.mjs), which wraps `t
 Two useful artifacts are produced:
 
 - `src-tauri/target/release/mrtyper.exe` — the standalone app.
-- `src-tauri/target/release/bundle/nsis/MrTyper_2.1.0_x64-setup.exe` — the single NSIS installer.
+- `src-tauri/target/release/bundle/nsis/MrTyper_2.1.1_x64-setup.exe` — the single NSIS installer.
 
 The installer is configured for a per-user install (`currentUser`) and does not require a separate runtime installer. If WebView2 is missing, Tauri's silent bootstrapper downloads it during installation. The binary is unsigned by default; Windows SmartScreen or antivirus heuristics may warn about or quarantine the NSIS installer. The application is built entirely from the source in this repository; at runtime its only network request is the optional update check. For distribution, sign the executable and installer with a code-signing certificate.
 
@@ -231,7 +231,7 @@ Close the setup with **Abort**, then launch it with normal rights:
 
 For a setup built from source, the relevant path is `src-tauri\target\release\bundle\nsis\`.
 
-If the installer was previously running, make sure it has fully closed first (check Task Manager for `MrTyper_2.1.0_x64-setup`).
+If the installer was previously running, make sure it has fully closed first (check Task Manager for `MrTyper_2.1.1_x64-setup`).
 
 ## Configuration and privacy
 

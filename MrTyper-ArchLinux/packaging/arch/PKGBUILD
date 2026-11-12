@@ -6,7 +6,7 @@
 #   makepkg -si
 
 pkgname=mrtyper
-pkgver=2.1.0
+pkgver=2.1.1
 pkgrel=1
 pkgdesc="Human-paced typing into any window, with pauses, typos and corrections"
 arch=('x86_64' 'aarch64')

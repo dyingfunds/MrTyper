@@ -46,6 +46,7 @@ import {
   makeDefaultPresets,
   normalizeSettings,
 } from "./lib/defaults";
+import { celebrate, useKonamiCode } from "./lib/easterEgg";
 import { liveBus } from "./lib/liveBus";
 import { pageEnter, pageExit, springSoft } from "./lib/motion";
 import {
@@ -667,6 +668,11 @@ function App() {
   }, [notify, update]);
 
   const dismissUpdate = useCallback(() => setUpdateDismissed(true), []);
+
+  useKonamiCode(() => {
+    celebrate();
+    notify("success", "Cheat code accepted", "+30 WPM of pure confidence. (The engine didn't change. You did.)");
+  });
 
   /* ---------------------------------------------------------------- */
   /* Actions                                                           */

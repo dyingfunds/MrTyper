@@ -4,6 +4,14 @@ All notable changes to MrTyper. The format follows [Keep a Changelog](https://ke
 
 ## [Unreleased]
 
+## [2.1.1] - 2026-11-11
+
+The first version delivered by the in-app updater.
+
+### Added
+
+- A small easter egg. Try a certain famous cheat code while MrTyper has focus (not in the script editor).
+
 ## [2.1.0] - 2026-11-11
 
 Script commands for Google Docs, in-app updates, typed slider values and more ways to sound human. Ready-made installers for every platform are on the [GitHub release](https://github.com/dyingfunds/MrTyper/releases/tag/v2.1.0). 2.0.0 has no updater, so install this version by hand once; later versions arrive through the app.
@@ -105,6 +113,7 @@ The redesign release, and the first with macOS and Linux apps. Ready-made instal
 
 Initial release: a Windows app with a liquid-glass interface, the human-cadence typing engine, presets, global hotkeys, the tray, and an NSIS installer.
 
-[Unreleased]: https://github.com/dyingfunds/MrTyper/compare/v2.1.0...HEAD
+[Unreleased]: https://github.com/dyingfunds/MrTyper/compare/v2.1.1...HEAD
+[2.1.1]: https://github.com/dyingfunds/MrTyper/compare/v2.1.0...v2.1.1
 [2.1.0]: https://github.com/dyingfunds/MrTyper/compare/v2.0.0...v2.1.0
 [2.0.0]: https://github.com/dyingfunds/MrTyper/releases/tag/v2.0.0
