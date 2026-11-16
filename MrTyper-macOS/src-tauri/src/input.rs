@@ -103,7 +103,17 @@ pub fn send_backspace() -> Result<(), String> {
 /// with a short gap, the way a hand presses them.
 const COMBO_GAP: std::time::Duration = std::time::Duration::from_millis(8);
 
+/// Shortcut keys must be sent from the main thread. For a character key
+/// (`{{bold}}` is Cmd+B), enigo looks up its key code in the current keyboard
+/// layout with the Text Input Source API, and macOS 14+ kills the process when
+/// that API is called off the main queue. Plain text avoids the lookup
+/// because it attaches the character as a Unicode string instead.
 pub fn send_combo(combo: &KeyCombo) -> Result<(), String> {
+    let combo = *combo;
+    main_queue::run_sync(move || send_combo_here(&combo))
+}
+
+fn send_combo_here(combo: &KeyCombo) -> Result<(), String> {
     let key = match combo.key {
         ComboKey::Char(character) => Key::Unicode(character),
         ComboKey::Named(named) => named_key(named),
@@ -196,4 +206,73 @@ pub fn foreground_target() -> Option<FocusTarget> {
 
 pub fn is_own_process(target: FocusTarget) -> bool {
     OWN_WINDOW_FOCUSED.load(Ordering::SeqCst) || target.pid as u32 == std::process::id()
+}
+
+// ---------------------------------------------------------------------------
+// Main-thread dispatch
+// ---------------------------------------------------------------------------
+
+/// Runs work synchronously on the main dispatch queue, which AppKit drives
+/// while the event loop is running. The typing thread blocks until the work
+/// is done, so keystrokes keep their order. Nothing on the main thread waits
+/// on the typing thread (stop and pause only set flags), so this can't deadlock.
+mod main_queue {
+    use std::ffi::c_void;
+
+    #[repr(C)]
+    struct DispatchQueue {
+        _private: [u8; 0],
+    }
+
+    // libdispatch and pthread are part of libSystem, which every macOS binary links.
+    unsafe extern "C" {
+        // `dispatch_get_main_queue()` is a C macro for `&_dispatch_main_q`.
+        static _dispatch_main_q: DispatchQueue;
+        fn dispatch_sync_f(
+            queue: *const DispatchQueue,
+            context: *mut c_void,
+            work: unsafe extern "C" fn(*mut c_void),
+        );
+        fn pthread_main_np() -> i32;
+    }
+
+    struct Job<F, R> {
+        work: Option<F>,
+        result: Option<R>,
+    }
+
+    unsafe extern "C" fn trampoline<F: FnOnce() -> R, R>(context: *mut c_void) {
+        // SAFETY: `context` is the `Job` that `run_sync` keeps alive on its
+        // stack until `dispatch_sync_f` returns.
+        let job = unsafe { &mut *context.cast::<Job<F, R>>() };
+        if let Some(work) = job.work.take() {
+            job.result = Some(work());
+        }
+    }
+
+    pub fn run_sync<F, R>(work: F) -> R
+    where
+        F: FnOnce() -> R + Send,
+        R: Send,
+    {
+        // dispatch_sync onto the main queue from the main thread deadlocks.
+        if unsafe { pthread_main_np() } != 0 {
+            return work();
+        }
+        let mut job = Job {
+            work: Some(work),
+            result: None,
+        };
+        // SAFETY: `dispatch_sync_f` runs the trampoline exactly once and
+        // returns only after it finishes, so `job` outlives every access.
+        unsafe {
+            dispatch_sync_f(
+                &raw const _dispatch_main_q,
+                (&raw mut job).cast::<c_void>(),
+                trampoline::<F, R>,
+            );
+        }
+        job.result
+            .expect("the main queue finished the job without running it")
+    }
 }

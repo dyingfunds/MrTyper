@@ -4,6 +4,10 @@ All notable changes to MrTyper. The format follows [Keep a Changelog](https://ke
 
 ## [Unreleased]
 
+### Fixed
+
+- **macOS: script commands such as `{{bold}}` no longer crash MrTyper.** To find a shortcut letter's key code, enigo uses the Text Input Source API, which recent macOS versions only allow on the main thread. Shortcuts are now sent from the main thread.
+
 ## [2.1.1] - 2026-11-11
 
 The first version delivered by the in-app updater.
