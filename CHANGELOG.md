@@ -4,6 +4,8 @@ All notable changes to MrTyper. The format follows [Keep a Changelog](https://ke
 
 ## [Unreleased]
 
+## [2.1.2] - 2026-11-15
+
 ### Fixed
 
 - **macOS: script commands such as `{{bold}}` no longer crash MrTyper.** To find a shortcut letter's key code, enigo uses the Text Input Source API, which recent macOS versions only allow on the main thread. Shortcuts are now sent from the main thread.
@@ -117,7 +119,8 @@ The redesign release, and the first with macOS and Linux apps. Ready-made instal
 
 Initial release: a Windows app with a liquid-glass interface, the human-cadence typing engine, presets, global hotkeys, the tray, and an NSIS installer.
 
-[Unreleased]: https://github.com/dyingfunds/MrTyper/compare/v2.1.1...HEAD
+[Unreleased]: https://github.com/dyingfunds/MrTyper/compare/v2.1.2...HEAD
+[2.1.2]: https://github.com/dyingfunds/MrTyper/compare/v2.1.1...v2.1.2
 [2.1.1]: https://github.com/dyingfunds/MrTyper/compare/v2.1.0...v2.1.1
 [2.1.0]: https://github.com/dyingfunds/MrTyper/compare/v2.0.0...v2.1.0
 [2.0.0]: https://github.com/dyingfunds/MrTyper/releases/tag/v2.0.0
