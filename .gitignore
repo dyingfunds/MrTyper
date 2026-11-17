@@ -2,6 +2,14 @@
 node_modules/
 
 # Build output
+# Installers are built by GitHub Actions only; never commit one (see AGENTS.md).
+release/
+*-setup.exe
+*.msi
+*.dmg
+*.AppImage
+*.deb
+*.rpm
 dist/
 **/src-tauri/target/
 **/src-tauri/gen/

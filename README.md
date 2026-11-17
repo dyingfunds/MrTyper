@@ -94,7 +94,6 @@ public/logo.svg            App mark (an M whose last stroke is a text cursor)
 scripts/generate_icons.py  Rebuilds icon sizes from icon.png (render it first with `pnpm tauri icon public/logo.svg`)
 scripts/generate_installer_art.py  Rebuilds branded NSIS bitmaps
 docs/                      README screenshots
-release/                   Prebuilt Windows installer + checksum
 MrTyper-macOS/             The macOS app (same layout as above)
 MrTyper-ArchLinux/         The Linux app, plus packaging/arch/PKGBUILD
 .github/workflows/         Builds and tests all three apps on real machines
@@ -126,19 +125,19 @@ For UI-only work, run `pnpm dev` in a browser. The app automatically uses a loca
 
 ## Install
 
-A self-contained Windows x64 installer is included in the repository:
+Download `MrTyper_<version>_x64-setup.exe` from the **[latest release](https://github.com/dyingfunds/MrTyper/releases/latest)**. Installers are built by GitHub Actions, never on a personal computer.
 
-**[release/MrTyper_2.2.0_x64-setup.exe](release/MrTyper_2.2.0_x64-setup.exe)**
-
-1. Verify the file against [release/SHA256SUMS.txt](release/SHA256SUMS.txt).
+1. Verify the file against `SHA256SUMS.txt` from the same release.
 2. Double-click the setup and approve Windows SmartScreen if you trust the build.
 3. Launch **MrTyper** and use it as described below.
 
-It performs a per-user installation under `%LOCALAPPDATA%\MrTyper`, so it does not normally need administrator rights. If the setup was opened by a low-integrity shell or file viewer, use [release/install-elevated.cmd](release/install-elevated.cmd) instead. The installer is unsigned, so Windows may show a publisher warning; code-signing is recommended before wider distribution. It contains no personal data or user-profile build paths.
+It performs a per-user installation under `%LOCALAPPDATA%\MrTyper`, so it does not normally need administrator rights. If the setup was opened by a low-integrity shell or file viewer, run it as administrator instead (see [Installation troubleshooting](#installation-troubleshooting)). The installer is unsigned, so Windows may show a publisher warning; code-signing is recommended before wider distribution. It contains no personal data or user-profile build paths.
 
 The installer can bootstrap the WebView2 runtime if it is missing; that is the only optional network step. See [Installation troubleshooting](#installation-troubleshooting) if Windows blocks the setup.
 
-## Build a single installer
+## Build from source
+
+Official installers come only from GitHub Actions (see AGENTS.md, "Releasing"). Build locally only to try a change on your own machine, and never publish or commit what it produces.
 
 ```powershell
 pnpm tauri:build
@@ -149,7 +148,7 @@ This runs [scripts/build-release.mjs](scripts/build-release.mjs), which wraps `t
 Two useful artifacts are produced:
 
 - `src-tauri/target/release/mrtyper.exe` — the standalone app.
-- `src-tauri/target/release/bundle/nsis/MrTyper_2.2.0_x64-setup.exe` — the single NSIS installer.
+- `src-tauri/target/release/bundle/nsis/MrTyper_<version>_x64-setup.exe` — the single NSIS installer.
 
 The installer is configured for a per-user install (`currentUser`) and does not require a separate runtime installer. If WebView2 is missing, Tauri's silent bootstrapper downloads it during installation. The binary is unsigned by default; Windows SmartScreen or antivirus heuristics may warn about or quarantine the NSIS installer. The application is built entirely from the source in this repository; at runtime its only network request is the optional update check. For distribution, sign the executable and installer with a code-signing certificate.
 
@@ -229,13 +228,12 @@ If the setup was started by a low-integrity shell, file viewer, or sandboxed age
 
 Close the setup with **Abort**, then launch it with normal rights:
 
-- Use [release/install-elevated.cmd](release/install-elevated.cmd), or
 - Right-click the setup executable and choose **Run as administrator**, or
 - Launch it from an elevated PowerShell window.
 
 For a setup built from source, the relevant path is `src-tauri\target\release\bundle\nsis\`.
 
-If the installer was previously running, make sure it has fully closed first (check Task Manager for `MrTyper_2.2.0_x64-setup`).
+If the installer was previously running, make sure it has fully closed first (check Task Manager for `MrTyper_<version>_x64-setup`).
 
 ## Configuration and privacy
 

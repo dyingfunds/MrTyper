@@ -40,7 +40,6 @@ const ROOT_ONLY = [
   "CLAUDE.md",
   "CHANGELOG.md",
   "docs/",
-  "release/",
   "scripts/check-platform-sync.mjs",
   "scripts/cross-check.mjs",
   "scripts/bump-version.mjs",

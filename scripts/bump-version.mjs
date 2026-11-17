@@ -3,11 +3,10 @@
 //   node scripts/bump-version.mjs 2.1.0
 //
 // The app UI and each tauri.conf.json read the version from package.json, so
-// only these need editing: the three package.json and Cargo.toml files, the
-// Arch PKGBUILD, and the Windows installer name in the README and the
-// elevated-install helper. Afterwards: update CHANGELOG.md, rebuild the
-// Windows installer into release/ (see AGENTS.md), commit, and push a
-// `v<version>` tag to publish the GitHub Release.
+// only these need editing: the three package.json and Cargo.toml files and
+// the Arch PKGBUILD. Afterwards: update CHANGELOG.md, commit, and push a
+// `v<version>` tag; GitHub Actions builds every installer and publishes the
+// GitHub Release. Never build or commit installers locally (see AGENTS.md).
 
 import fs from "node:fs";
 import path from "node:path";
@@ -46,9 +45,6 @@ for (const app of APPS) {
 update("MrTyper-ArchLinux/packaging/arch/PKGBUILD", /^pkgver=.*$/m, `pkgver=${next}`);
 update("MrTyper-ArchLinux/packaging/arch/PKGBUILD", /^pkgrel=.*$/m, "pkgrel=1");
 
-const installerName = (version) => `MrTyper_${version}_x64-setup`;
-const oldName = new RegExp(installerName(current).replaceAll(".", "\\."), "g");
-update("README.md", oldName, installerName(next));
-update("release/install-elevated.cmd", oldName, installerName(next));
-
-console.log(`\n${current} -> ${next}. Cargo.lock files refresh on the next build.`);
+console.log(
+  `\n${current} -> ${next}. Refresh each Cargo.lock with: cargo update -w --offline --manifest-path <app>/src-tauri/Cargo.toml`,
+);

@@ -8,3 +8,4 @@ The essentials:
 - To make a shared change, edit at the root, then run `node scripts/check-platform-sync.mjs --fix`.
 - Verify macOS and Linux from any machine with `node scripts/cross-check.mjs <macos|linux> clippy`. CI is the final check.
 - Never let a keystroke event become React state. See "Performance rules" in AGENTS.md.
+- **Never build a release on the user's computer.** Releases are built only by GitHub Actions after a `v*` tag is pushed; local builds can leak the user's name and paths. Never run `pnpm tauri:build` for a release and never commit an installer or binary. See "Releasing" in AGENTS.md.

@@ -13,7 +13,6 @@ A desktop app that types a script into whatever window the user focuses, with hu
 ├─ src/                 React UI
 ├─ src-tauri/           Rust engine + Tauri config
 ├─ scripts/             Build and maintenance scripts (see below)
-├─ release/             Prebuilt Windows installer committed to the repo
 ├─ docs/                README screenshots
 ├─ MrTyper-macOS/       macOS app: full copy of the root app
 ├─ MrTyper-ArchLinux/   Linux app: full copy + packaging/arch (PKGBUILD)
@@ -133,7 +132,7 @@ Run these from an app folder: the root, `MrTyper-macOS/` or `MrTyper-ArchLinux/`
 | Strict unused-code check | `npx tsc --noEmit --noUnusedLocals --noUnusedParameters` |
 | Engine tests | `cargo test --manifest-path src-tauri/Cargo.toml` (on the matching OS) |
 | Lint | `cargo clippy --all-targets --manifest-path src-tauri/Cargo.toml` |
-| Release build and bundles | `pnpm tauri:build`, which runs `scripts/build-release.mjs` and strips build-machine paths |
+| Local test build (never published) | `pnpm tauri:build`, which runs `scripts/build-release.mjs` and strips build-machine paths. Releases are built by CI only. |
 | Run the native app in dev | `pnpm tauri:dev` |
 
 From the repository root:
@@ -158,19 +157,23 @@ Nobody has yet used the macOS or Linux apps on real hardware beyond the CI build
 
 ## Releasing
 
+**Never build release installers on a personal computer.** Every release binary is built by GitHub Actions when a `v*` tag is pushed. Local builds can carry the builder's user name and folder paths, so no installer is ever committed to the repository.
+
 The in-app updater needs every release to be signed:
 
 - **Secrets.** The repository must have the Actions secrets `TAURI_SIGNING_PRIVATE_KEY` (the contents of the private key file) and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`. The matching public key is in `plugins.updater.pubkey` of all three `tauri.conf.json` files. The private key stays with the maintainer and is never committed.
 - **What CI does with them.** With the secret present, the Windows, Linux and macOS jobs build with `createUpdaterArtifacts` on, which adds a `.sig` beside the NSIS installer, the AppImage and `MrTyper.app.tar.gz`. The release job runs `scripts/make-update-manifest.mjs` to fold those into `latest.json`, which installed apps fetch from `releases/latest/download/latest.json`. Without the secret, builds still work but have no update files.
 - **Never lose or rotate the key casually.** Installed copies only accept updates signed by the key they shipped with. A new key means everyone has to reinstall by hand once.
 
-1. `node scripts/bump-version.mjs x.y.z`, then add the release notes to `CHANGELOG.md`, moving them out of Unreleased.
-2. Rebuild the Windows installer committed in `release/`: run `pnpm tauri:build` at the root, copy `src-tauri/target/release/bundle/nsis/MrTyper_x.y.z_x64-setup.exe` into `release/`, delete the old one, and regenerate `release/SHA256SUMS.txt`.
-3. Commit, push to `main`, then `git tag -a vx.y.z -m "MrTyper x.y.z"` and `git push origin vx.y.z`.
-4. The workflow's `release` job publishes a GitHub Release with every installer, `SHA256SUMS.txt`, and the text of `.github/release-notes.md`.
+1. `node scripts/bump-version.mjs x.y.z`, then add the release notes to `CHANGELOG.md`, moving them out of Unreleased. Refresh the Cargo.lock files with `cargo update -w --offline --manifest-path <app>/src-tauri/Cargo.toml` (no build needed).
+2. Commit, push to `main`, then `git tag -a vx.y.z -m "MrTyper x.y.z"` and `git push origin vx.y.z`.
+3. The workflow builds every platform on GitHub's machines, and its `release` job publishes a GitHub Release with every installer, the update files, `SHA256SUMS.txt`, and the text of `.github/release-notes.md`. Installed apps pick the update up from there.
+
+Do **not** run `pnpm tauri:build` as part of a release, and never commit an installer or binary.
 
 ## Known traps
 
+- **Never build release installers on a personal computer.** Every release binary is built by GitHub Actions when a `v*` tag is pushed. Local builds can carry the builder's user name and folder paths, so no installer is ever committed to the repository. (Version 2.2.0 was briefly committed with a locally built installer; it was checked for paths and removed.)
 - **Updates and the macOS Accessibility permission.** The app is ad-hoc signed, so every new version looks like a different app to macOS and its Accessibility permission has to be granted again after an update. The macOS README says so.
 - **Linux packages can't update themselves.** Only the AppImage can be replaced in place. `can_self_update` returns false for `.deb`, `.rpm` and Arch installs (no `APPIMAGE` variable), and the UI opens the download page instead.
 - **Script commands send real shortcuts.** `{{alt+f4}}` really closes the window. Escape is refused because it's the emergency stop; keep it that way.
