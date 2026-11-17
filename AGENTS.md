@@ -75,6 +75,7 @@ Keep platform logic out of shared code:
 | `actions.rs` | Start/stop/pause actions shared by hotkeys, the tray and commands |
 | `settings.rs`, `store.rs` | Settings model and defaults; atomic JSON persistence in the app config dir (`mrtyper.json`) |
 | `tray.rs` | Tray / menu-bar icon and menu |
+| `mini.rs` | The floating mini window: created on first use, shown while a session runs, never focusable |
 
 A session goes: `prepare()` (connect or check permission) → countdown → read the focus target (refuse if MrTyper itself has focus) → type the plan, re-checking focus before every key when "Stop when focus leaves" is on.
 
@@ -90,6 +91,10 @@ Engine → UI events:
 - **`App.tsx`** holds all state and the native event stream, and routes the three pages: `TypePage`, `PresetsPage`, `SettingsPage`.
 - **`lib/bridge.ts`** wraps every Tauri call. In a plain browser it uses **`lib/mockBackend.ts`**, a localStorage-backed fake engine that never sends keystrokes, so `pnpm dev` works anywhere.
 - **`lib/scriptCommands.ts`** mirrors `script.rs` so the UI can count characters without commands, estimate pause time and offer the command menu. **Change the two together**; `script.rs` has the tests.
+- **`components/ScriptHighlight.tsx`** sits behind the script textarea and paints a chip under each command. It must wrap exactly like the textarea, so both share the same box rules in `type.css` (including `scrollbar-gutter: stable`).
+- **`lib/importScript.ts`** opens `.txt`, `.md` and `.docx` files. Word and Markdown become a shared paragraph model, then one renderer writes the `{{…}}` commands (Google Docs behaviour: styles close at each line end, lists toggle off on the line after). `.docx` is unzipped with a small ZIP reader and `DecompressionStream`, so there is no dependency. It is loaded on demand.
+- **`lib/presetFiles.ts`** is the preset export/import format. Export goes through the `export_presets` command (writes to Downloads and never overwrites); import re-saves each preset with a unique name.
+- **`MiniBar.tsx`** is the mini window's UI. `main.tsx` renders it instead of `App` when the window label is `mini` (or `?view=mini` in a browser preview).
 - **`lib/updates.ts`** wraps the updater, process and opener plugins. The update check runs once on launch (if enabled) and installs only when the user clicks Update.
 - **`components/ui/NumberField.tsx`** is the click-to-type value next to every slider. Use it for any new slider.
 
@@ -102,7 +107,7 @@ Performance rules. They're why the UI stays smooth at 300 WPM; keep them:
 
 Styling:
 - `styles/tokens.css` holds the colours, accents and fonts; light theme and accents are attribute selectors on `:root`.
-- The other stylesheets are split by area: `shell`, `controls`, `type`, `pages` and `overlays`.
+- The other stylesheets are split by area: `shell`, `controls`, `type`, `pages` and `overlays`, then `calm.css` (the quieter skin, loaded last so it wins) and `mini.css` (the mini window).
 - Accent and motion preferences are cosmetic. They live in webview localStorage (`lib/uiPrefs.ts`), not in the native settings file.
 - Reduced motion is applied with `html.reduce-motion`, not the media query, so the in-app Motion setting can override the OS.
 
@@ -188,4 +193,5 @@ The in-app updater needs every release to be signed:
 - Code signing and notarisation for macOS (needs an Apple Developer account), and signing for the Windows installer.
 - Wayland: an XDG RemoteDesktop/libei path for GNOME and KDE, and the XDG GlobalShortcuts portal for hotkeys.
 - Script command shortcuts for Microsoft Word and other editors (today they target Google Docs).
+- The mini window on macOS and Linux is a plain rectangle; a rounded one needs `macOSPrivateApi` on macOS and transparency support on Linux.
 - README screenshots for macOS and Linux (the current ones are from Windows).

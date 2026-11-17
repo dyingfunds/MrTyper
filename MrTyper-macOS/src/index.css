@@ -6,6 +6,8 @@
 @import "./styles/type.css";
 @import "./styles/pages.css";
 @import "./styles/overlays.css";
+@import "./styles/calm.css";
+@import "./styles/mini.css";
 
 @theme {
   --font-sans: "Geist Variable", "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;

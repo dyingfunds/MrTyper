@@ -4,6 +4,24 @@ All notable changes to MrTyper. The format follows [Keep a Changelog](https://ke
 
 ## [Unreleased]
 
+## [2.2.0] - 2026-11-16
+
+Open Word and Markdown files, a hold command, a mini window, preset sharing and a calmer look.
+
+### Added
+
+- **Open Word and Markdown files.** The new folder button above the script (or dropping a file on it) opens `.txt`, `.md` and `.docx` files. Word and Markdown formatting (headings, bold, italic, underline, strikethrough, lists, alignment, line and page breaks) is turned into script commands, so it comes back in Google Docs as MrTyper types.
+- **Commands stand out in the editor.** `{{bold}}`, `{{h1}}` and the other commands get a soft highlight, and pauses a warmer one, so the text that gets typed is easy to tell apart. Braces that aren't a command stay plain.
+- **`{{hold}}`** pauses the session at that point until you press the pause key (F9), for example to wait for a page to load or to look something up.
+- **More pause lengths in the { } menu:** 1, 3, 5, 10, 15 and 20 seconds, plus Hold.
+- **Finish in.** Under the tempo dial, enter how many minutes the script should take and press Fit; MrTyper sets the WPM range to match, keeping your current spread. It says so when the length is out of reach.
+- **Mini window.** While a session runs, a small bar at the top of the screen shows progress with Pause and Stop buttons. It never takes focus from the window being typed into. Turn it off in **Setup → Appearance**.
+- **Export and import presets.** Export one preset or all of them to a file (saved in Downloads) and import preset files on any computer. Names that already exist get a number added.
+
+### Changed
+
+- **A calmer look.** The big "Paste a script. Pick a rhythm." empty state is gone, and the dot grid, glows and capitalised mono labels made way for quieter sentence-case labels and plainer surfaces. The accent colour is kept for the things you act on.
+
 ## [2.1.2] - 2026-11-15
 
 ### Fixed

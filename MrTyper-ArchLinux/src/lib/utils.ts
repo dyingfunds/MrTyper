@@ -57,6 +57,43 @@ export function estimateDurationSeconds(text: string, typing: TypingSettings): n
   return Math.max(1, Math.round(base + extra));
 }
 
+/**
+ * The tempo that makes a script take about `targetSeconds`, keeping the
+ * current gap between the slowest and fastest speed. Returns the closest
+ * reachable range when the target is out of reach (10–300 WPM), with the time
+ * that range really takes.
+ */
+export function fitTempoToDuration(
+  text: string,
+  extraSeconds: number,
+  typing: TypingSettings,
+  targetSeconds: number,
+): { minWpm: number; maxWpm: number; seconds: number } | null {
+  if (!characterCount(text)) return null;
+  const ratio = typing.maxWpm / Math.max(1, typing.minWpm);
+  const rangeFor = (center: number) => {
+    let minWpm = Math.round((2 * center) / (1 + ratio));
+    let maxWpm = Math.round(minWpm * ratio);
+    minWpm = Math.min(300, Math.max(10, minWpm));
+    maxWpm = Math.min(300, Math.max(minWpm, maxWpm));
+    const seconds = estimateDurationSeconds(text, { ...typing, minWpm, maxWpm }) + extraSeconds;
+    return { minWpm, maxWpm, seconds };
+  };
+  // Duration falls as the tempo rises, so a binary search on the centre works.
+  let low = 10;
+  let high = 300;
+  for (let step = 0; step < 28; step += 1) {
+    const middle = (low + high) / 2;
+    if (rangeFor(middle).seconds > targetSeconds) low = middle;
+    else high = middle;
+  }
+  const below = rangeFor(Math.floor(high));
+  const above = rangeFor(Math.ceil(high));
+  return Math.abs(below.seconds - targetSeconds) <= Math.abs(above.seconds - targetSeconds)
+    ? below
+    : above;
+}
+
 export function formatDuration(totalSeconds: number): string {
   const seconds = Math.max(0, Math.round(totalSeconds));
   if (seconds < 60) return `${seconds}s`;

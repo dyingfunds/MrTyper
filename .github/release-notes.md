@@ -19,6 +19,7 @@ Pick the file for your system below. Everything is ready to use, so you don't ne
 - **macOS:** MrTyper isn't notarised by Apple, so you have to allow the first launch: on macOS 15 Sequoia and later, use **Open Anyway** in **System Settings → Privacy & Security** (right-click → Open no longer works there); on older versions, right-click → Open. It also needs Accessibility access to type into other apps.
 - **Updates:** from 2.1.0 on, MrTyper checks for new versions when it opens and offers to install them; nothing installs until you click Update. Coming from 2.0.0, install this version by hand once.
 - **Formatting in Google Docs:** write `{{bold}}`, `{{h1}}`, `{{bigger}}`, `{{bullets}}` and more in a script and MrTyper presses the shortcut instead of typing it.
+- **New in 2.2.0:** open `.docx` and `.md` files with their formatting kept, `{{hold}}` to wait for the pause key, more pause lengths, **Finish in** to fit the tempo to a time, a floating mini window while typing, preset export and import, and a calmer look.
 - **Linux:** everything works on X11 and on Hyprland, Sway and other wlroots Wayland compositors. On GNOME or KDE Wayland, MrTyper can only type into X11 apps, so pick the X11 session at login for the full experience.
 
 Full guides: [Windows](https://github.com/dyingfunds/MrTyper#readme) · [macOS](https://github.com/dyingfunds/MrTyper/tree/main/MrTyper-macOS#readme) · [Arch Linux](https://github.com/dyingfunds/MrTyper/tree/main/MrTyper-ArchLinux#readme)

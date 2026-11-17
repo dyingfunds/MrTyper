@@ -5,6 +5,7 @@ import {
   ClipboardPaste,
   Eraser,
   FileDown,
+  FolderOpen,
   Pause,
   Play,
   Square,
@@ -14,6 +15,7 @@ import {
   useCallback,
   useDeferredValue,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -23,14 +25,15 @@ import {
 } from "react";
 import { CadenceScope } from "../components/CadenceScope";
 import { LiveScript } from "../components/LiveScript";
+import { ScriptHighlight } from "../components/ScriptHighlight";
 import { Tachometer } from "../components/Tachometer";
 import { AnimatedNumber } from "../components/ui/AnimatedNumber";
-import { Button, IconButton } from "../components/ui/Button";
+import { IconButton } from "../components/ui/Button";
 import { Keycap } from "../components/ui/Keycap";
 import { NumberField } from "../components/ui/NumberField";
 import { RangeSlider, Slider } from "../components/ui/Slider";
 import { humanLabel, humanScore } from "../lib/cadence";
-import { easeOut, springSnappy } from "../lib/motion";
+import { springSnappy } from "../lib/motion";
 import { PLATFORM } from "../lib/platform";
 import { COMMAND_GROUPS, typedText } from "../lib/scriptCommands";
 import {
@@ -38,6 +41,7 @@ import {
   characterCount,
   cn,
   estimateDurationSeconds,
+  fitTempoToDuration,
   formatDuration,
   formatElapsed,
   formatHotkey,
@@ -83,14 +87,15 @@ interface ScriptCounts {
   seconds: number;
 }
 
-/** Dropped files larger than this are almost certainly not a script. */
-const MAX_DROP_BYTES = 1_500_000;
-
 /* ------------------------------------------------------------------ */
 /*  Command menu                                                       */
 /* ------------------------------------------------------------------ */
 
 const IS_MAC = PLATFORM.id === "macos";
+
+/** What the open-file picker offers: plain text, Markdown and Word. */
+const SCRIPT_FILE_ACCEPT =
+  ".txt,.text,.md,.markdown,.docx,text/plain,text/markdown,application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 
 /** The {{…}} commands, offered from a button above the script. */
 function CommandMenu({
@@ -137,12 +142,32 @@ function CommandMenu({
       {open ? (
         <div className="command-menu" role="menu" aria-label="Insert a command">
           <p className="command-menu-note">
-            Inserted at the cursor. MrTyper presses the Google Docs shortcut instead of typing it.
+            Inserted at the cursor. MrTyper presses the Google Docs shortcut, or waits, instead of
+            typing it.
           </p>
           {COMMAND_GROUPS.map((group) => (
             <div className="command-menu-group" key={group.label}>
               <span className="label">{group.label}</span>
-              {group.options.map((option) => {
+              {group.compact ? (
+                <div className="command-menu-chips">
+                  {group.options.map((option) => (
+                    <button
+                      key={option.token}
+                      type="button"
+                      role="menuitem"
+                      className="command-menu-chip"
+                      title={`Insert {{${option.token}}}`}
+                      onClick={() => {
+                        onPick(option.token);
+                        setOpen(false);
+                      }}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+              {group.compact ? null : group.options.map((option) => {
                 const keys = IS_MAC ? option.keys.mac : option.keys.other;
                 return (
                   <button
@@ -178,7 +203,6 @@ interface StageProps {
   typed: number;
   total: number;
   counts: ScriptCounts;
-  hotkeyStart: string;
   scriptCommands: boolean;
   onTextChange: (text: string) => void;
   notify: Notify;
@@ -190,12 +214,22 @@ const Stage = memo(function Stage({
   typed,
   total,
   counts,
-  hotkeyStart,
   scriptCommands,
   onTextChange,
   notify,
 }: StageProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const highlightRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const showHighlight = scriptCommands && text.includes("{{");
+
+  // The highlight layer scrolls with the textarea it sits behind.
+  const syncHighlight = useCallback(() => {
+    const textarea = textareaRef.current;
+    const layer = highlightRef.current;
+    if (textarea && layer) layer.scrollTop = textarea.scrollTop;
+  }, []);
+  useLayoutEffect(syncHighlight, [syncHighlight, text, showHighlight]);
   const dragDepth = useRef(0);
   const [dropping, setDropping] = useState(false);
   const isIdle = phase === "idle";
@@ -271,20 +305,33 @@ const Stage = memo(function Stage({
       if (dropped) onTextChange(dropped);
       return;
     }
-    if (file.size > MAX_DROP_BYTES) {
-      notify("warning", "That file is too large", "Drop a plain-text file under 1.5 MB.");
-      return;
-    }
+    await loadFile(file);
+  }
+
+  async function loadFile(file: File) {
     try {
-      const contents = await file.text();
-      if (contents.includes("\u0000")) {
-        notify("warning", "Not a text file", "MrTyper can only load plain text.");
+      // The converter is only needed when a file is opened, so it loads then.
+      const { readScriptFile } = await import("../lib/importScript");
+      const imported = await readScriptFile(file, scriptCommands);
+      if (!imported.text.trim()) {
+        notify("warning", "Nothing to type in that file", `${file.name} has no text in it.`);
         return;
       }
-      onTextChange(normalizeScript(contents));
-      notify("success", "Script loaded", `${file.name} is on the stage.`);
-    } catch {
-      notify("error", "Couldn't read that file", "Try pasting its contents instead.");
+      onTextChange(imported.text);
+      const converted = imported.kind !== "text" && scriptCommands;
+      notify(
+        "success",
+        "Script loaded",
+        converted
+          ? `${file.name} is on the stage, with its formatting turned into commands.`
+          : `${file.name} is on the stage.`,
+      );
+    } catch (error) {
+      notify(
+        "warning",
+        "Couldn't open that file",
+        error instanceof Error ? error.message : "Try pasting its contents instead.",
+      );
     }
   }
 
@@ -328,6 +375,24 @@ const Stage = memo(function Stage({
         </div>
 
         <div className="stage-actions">
+          <IconButton
+            label="Open a file (.txt, .md, .docx)"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={!isIdle}
+          >
+            <FolderOpen size={15} strokeWidth={1.8} />
+          </IconButton>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept={SCRIPT_FILE_ACCEPT}
+            hidden
+            onChange={(event) => {
+              const file = event.target.files?.[0];
+              event.target.value = "";
+              if (file) void loadFile(file);
+            }}
+          />
           {scriptCommands ? (
             <CommandMenu
               disabled={!isIdle}
@@ -356,17 +421,19 @@ const Stage = memo(function Stage({
       </header>
 
       <div className="stage-body">
+        {showHighlight && isIdle ? <ScriptHighlight ref={highlightRef} text={text} /> : null}
         <textarea
           ref={textareaRef}
           className="script-input"
           value={text}
           disabled={!isIdle}
           aria-label="Text to type"
-          placeholder={text ? undefined : "Start writing, or paste a script…"}
+          placeholder="Write or paste a script, or drop a .txt, .md or .docx file here."
           spellCheck={false}
           autoCorrect="off"
           autoCapitalize="off"
           onChange={(event) => onTextChange(event.target.value)}
+          onScroll={syncHighlight}
         />
 
         <AnimatePresence initial={false}>
@@ -380,33 +447,6 @@ const Stage = memo(function Stage({
               transition={{ duration: 0.18 }}
             >
               <LiveScript text={liveText} typed={typed} phase={phase} />
-            </motion.div>
-          ) : null}
-        </AnimatePresence>
-
-        <AnimatePresence initial={false}>
-          {isIdle && text.length === 0 ? (
-            <motion.div
-              key="empty"
-              className="stage-empty"
-              initial={{ opacity: 0, y: 12 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, transition: { duration: 0.1 } }}
-              transition={{ duration: 0.4, ease: easeOut }}
-            >
-              <p className="stage-empty-title">
-                Paste a script.
-                <br />
-                Pick a rhythm.
-                <br />
-                <b>Press {formatHotkey(hotkeyStart)}.</b>
-              </p>
-              <div className="stage-empty-row">
-                <Button icon={ClipboardPaste} onClick={() => void pasteFromClipboard()}>
-                  Paste from clipboard
-                </Button>
-                <span>or drop a text file anywhere here</span>
-              </div>
             </motion.div>
           ) : null}
         </AnimatePresence>
@@ -477,7 +517,9 @@ interface DeckProps {
   typing: TypingSettings;
   phase: Phase;
   liveWpm: number;
+  hasScript: boolean;
   onTypingChange: (patch: Partial<TypingSettings>) => void;
+  onFitTempo: (minutes: number) => void;
   onOpenSettings: () => void;
 }
 
@@ -485,10 +527,13 @@ const Deck = memo(function Deck({
   typing,
   phase,
   liveWpm,
+  hasScript,
   onTypingChange,
+  onFitTempo,
   onOpenSettings,
 }: DeckProps) {
   const [tempoDragging, setTempoDragging] = useState(false);
+  const [fitMinutes, setFitMinutes] = useState(10);
   const isIdle = phase === "idle";
   const showLive = phase === "typing" || phase === "paused";
   const score = humanScore(typing);
@@ -560,6 +605,32 @@ const Deck = memo(function Deck({
             />
             <span>Max</span>
           </div>
+        </div>
+        <div className="fit-row">
+          <span className="control-name">
+            Finish in
+            <span className="control-hint">sets the tempo</span>
+          </span>
+          <NumberField
+            className="control-value"
+            value={fitMinutes}
+            min={1}
+            max={600}
+            unit="min"
+            format={(value) => `${value} min`}
+            ariaLabel="Target length in minutes"
+            disabled={!isIdle}
+            onChange={setFitMinutes}
+          />
+          <button
+            type="button"
+            className="fit-btn"
+            disabled={!isIdle || !hasScript}
+            title={hasScript ? "Set the tempo so the script takes this long" : "Add a script first"}
+            onClick={() => onFitTempo(fitMinutes)}
+          >
+            Fit
+          </button>
         </div>
       </section>
 
@@ -795,6 +866,9 @@ const Transport = memo(function Transport({
   if (isCounting) {
     statusTone = "is-live";
     statusText = "Armed · waiting for focus";
+  } else if (isPaused && engine.held) {
+    statusTone = "is-warn";
+    statusText = `Holding · press ${formatHotkey(hotkeyPause)} to carry on`;
   } else if (isPaused) {
     statusTone = "is-warn";
     statusText = "Paused · holding position";
@@ -974,6 +1048,41 @@ export const TypePage = memo(function TypePage({
     };
   }, [deferredText, scriptCommands, typing]);
 
+  const handleFitTempo = useCallback(
+    (minutes: number) => {
+      const target = minutes * 60;
+      const typed = typedText(text, scriptCommands);
+      const result = fitTempoToDuration(typed.text, typed.pauseMs / 1000, typing, target);
+      if (!result) {
+        notify("info", "Nothing to time yet", "Add a script first, then fit the tempo to it.");
+        return;
+      }
+      onTypingChange({ minWpm: result.minWpm, maxWpm: result.maxWpm });
+      const range = `${result.minWpm}–${result.maxWpm} WPM`;
+      const about = formatDuration(result.seconds);
+      if (result.seconds > target * 1.1 + 15) {
+        notify(
+          "warning",
+          "That's faster than MrTyper types",
+          `Even at its top speed, ${range}, this script takes about ${about}.`,
+        );
+      } else if (result.seconds < target * 0.9 - 15) {
+        notify(
+          "warning",
+          "That's slower than MrTyper types",
+          `At its slowest, ${range}, this script takes about ${about}. Thinking pauses or {{pause}} commands can stretch it further.`,
+        );
+      } else {
+        notify(
+          "success",
+          "Tempo set",
+          `${range} finishes in about ${about}. Typos and bursts can shift it a little.`,
+        );
+      }
+    },
+    [notify, onTypingChange, scriptCommands, text, typing],
+  );
+
   return (
     <div className="type-page" id="panel-type" role="tabpanel" aria-label="Type">
       <Stage
@@ -982,7 +1091,6 @@ export const TypePage = memo(function TypePage({
         typed={engine.typed}
         total={engine.total}
         counts={counts}
-        hotkeyStart={settings.hotkeyStart}
         scriptCommands={scriptCommands}
         onTextChange={onTextChange}
         notify={notify}
@@ -991,7 +1099,9 @@ export const TypePage = memo(function TypePage({
         typing={typing}
         phase={engine.phase}
         liveWpm={engine.wpm}
+        hasScript={counts.characters > 0}
         onTypingChange={onTypingChange}
+        onFitTempo={handleFitTempo}
         onOpenSettings={onOpenSettings}
       />
       <Transport

@@ -572,6 +572,16 @@ export const SettingsPage = memo(function SettingsPage({
               label="Always on top"
             />
           </Row>
+          <Row
+            title="Mini window while typing"
+            description="A small bar at the top of the screen with progress, pause and stop. Clicking it never takes focus from the window being typed into."
+          >
+            <Toggle
+              checked={settings.miniWindow}
+              onChange={(miniWindow) => onSettingsChange({ miniWindow })}
+              label="Show the mini window while typing"
+            />
+          </Row>
         </Section>
 
         <Section

@@ -3,6 +3,7 @@ mod commands;
 mod engine;
 mod hotkeys;
 mod input;
+mod mini;
 mod script;
 mod settings;
 mod store;
@@ -53,6 +54,7 @@ pub fn run() {
             commands::delete_preset,
             commands::apply_backdrop_theme,
             commands::can_self_update,
+            commands::export_presets,
         ])
         .setup(|app| {
             let config_dir = std::env::var_os("MRTYPER_CONFIG_DIR")
@@ -82,6 +84,7 @@ pub fn run() {
                     )
                 })?;
             let webview_data = webview_data_directory(app)?;
+            app.manage(mini::WebviewDataDir(webview_data.clone()));
             let window = WebviewWindowBuilder::from_config(app.handle(), &window_config)?
                 .data_directory(webview_data)
                 .build()
@@ -106,6 +109,9 @@ pub fn run() {
         .on_window_event(|window, event| {
             if let WindowEvent::Focused(focused) = event {
                 input::set_own_window_focused(*focused);
+            }
+            if window.label() == mini::LABEL {
+                return;
             }
             if let WindowEvent::CloseRequested { api, .. } = event {
                 // Closing the writing room hides MrTyper to the tray (menu bar on

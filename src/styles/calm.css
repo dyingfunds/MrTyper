@@ -1,0 +1,305 @@
+/* ------------------------------------------------------------------ */
+/*  Calm skin                                                          */
+/*  Loaded after the other stylesheets. Keeps the layout and the one   */
+/*  accent colour, but drops the hardware dressing: no dot grid, no    */
+/*  glows, no shouting mono labels. The accent is saved for the things */
+/*  you act on: Start, slider fills, switches that are on.             */
+/* ------------------------------------------------------------------ */
+
+:root {
+  --radius-panel: 16px;
+  --line: rgba(255, 255, 255, 0.06);
+  --accent-glow: transparent;
+  --accent-soft: color-mix(in oklab, var(--accent) 9%, transparent);
+}
+
+:root[data-theme="light"] {
+  --line: rgba(24, 26, 14, 0.08);
+  --accent-soft: color-mix(in oklab, var(--accent) 22%, transparent);
+}
+
+/* Labels: quiet sentence case instead of tracked capitals. ------------- */
+
+.label {
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 550;
+  letter-spacing: -0.005em;
+  text-transform: none;
+  color: var(--text-3);
+}
+
+.titlebar-status {
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.tag {
+  font-family: var(--font-sans);
+  font-size: 11.5px;
+  border-radius: 99px;
+  background: transparent;
+}
+
+.led {
+  border-radius: 99px;
+  box-shadow: none;
+}
+
+.led.is-typing {
+  box-shadow: none;
+  animation: none;
+}
+
+/* Panels --------------------------------------------------------------- */
+
+.panel {
+  border-color: var(--line);
+}
+
+/* Stage: a plain page to write on. ------------------------------------- */
+
+.stage-head {
+  height: 50px;
+  padding-left: 22px;
+  border-bottom-color: transparent;
+}
+
+.stage-body::before,
+.stage-body::after {
+  display: none;
+}
+
+.script-input,
+.live-script,
+.script-highlight {
+  padding: 6px 30px 32px 22px;
+  line-height: 1.75;
+}
+
+.stage.is-live,
+.stage.is-dropping {
+  box-shadow: none;
+}
+
+.stage-drop {
+  font-family: var(--font-sans);
+  font-size: 13px;
+  letter-spacing: 0;
+  text-transform: none;
+  border-width: 1px;
+}
+
+.ls-fresh {
+  animation-name: ink-settle-calm;
+}
+
+@keyframes ink-settle-calm {
+  from {
+    color: var(--accent-text);
+  }
+  to {
+    color: var(--text);
+  }
+}
+
+.ls-caret::before {
+  width: 2px;
+  box-shadow: none;
+}
+
+.ls-caret.is-typo::before {
+  box-shadow: none;
+}
+
+/* Deck ------------------------------------------------------------------ */
+
+.deck-section {
+  border-color: var(--line);
+}
+
+.tempo-bound span {
+  font-family: var(--font-sans);
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.control-value {
+  color: var(--text);
+}
+
+/* Humanize switches: text and a small dot, no lit keys. */
+.human-grid {
+  gap: 4px;
+}
+
+.human-key {
+  padding: 8px 10px;
+  border-color: transparent;
+  background: var(--surface-2);
+}
+
+.human-key:hover {
+  border-color: var(--line-2);
+}
+
+.human-key-name {
+  color: var(--text-3);
+}
+
+.human-key-value {
+  font-family: var(--font-sans);
+  font-size: 11px;
+}
+
+.human-key-led {
+  top: 12px;
+  width: 6px;
+  height: 6px;
+  border-radius: 99px;
+}
+
+.human-key[aria-checked="true"] {
+  border-color: transparent;
+  background: var(--surface-3);
+}
+
+.human-key[aria-checked="true"] .human-key-value {
+  color: var(--text-2);
+}
+
+.human-key[aria-checked="true"] .human-key-led {
+  background: var(--accent-mark);
+  box-shadow: none;
+  transform: none;
+}
+
+/* The humanity meter becomes one thin bar. */
+.human-meter-cells {
+  gap: 2px;
+}
+
+.human-meter-cells i {
+  height: 4px;
+  border-radius: 99px;
+}
+
+.human-meter-cells i.is-on {
+  transform: none;
+}
+
+.human-meter-label {
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 550;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+/* Transport ------------------------------------------------------------- */
+
+.transport-progress-fill {
+  box-shadow: none;
+}
+
+.start-btn {
+  border-radius: 14px;
+}
+
+.start-btn::before {
+  display: none;
+}
+
+.start-btn:hover {
+  transform: none;
+}
+
+.start-btn:hover .start-btn-icon {
+  transform: none;
+}
+
+.start-btn-icon {
+  border-radius: 10px;
+}
+
+.start-btn-label {
+  font-family: var(--font-sans);
+  font-stretch: normal;
+  font-size: 15px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+}
+
+.start-btn-sub {
+  font-family: var(--font-sans);
+  font-size: 11.5px;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.scope-legend {
+  font-family: var(--font-sans);
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.readout-value small {
+  font-family: var(--font-sans);
+}
+
+/* Pages ------------------------------------------------------------------ */
+
+.preset-speed span,
+.hotkey-capture-prompt {
+  font-family: var(--font-sans);
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+/* Shell ------------------------------------------------------------------ */
+
+.rail-button {
+  font-family: var(--font-sans);
+  font-size: 10.5px;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.stage-stats {
+  font-family: var(--font-sans);
+  font-size: 12px;
+}
+
+.command-menu .command-menu-item code {
+  color: var(--text-3);
+}
+
+/* Short windows: keep the deck's compact sizes over the rules above. ------ */
+
+@media (max-height: 920px) {
+  .human-key {
+    padding: 7px 8px;
+  }
+
+  .human-key-led {
+    top: 9px;
+  }
+
+  .fit-row {
+    margin-top: 10px;
+    padding-top: 9px;
+  }
+}
+
+@media (max-height: 760px) {
+  .tach {
+    max-width: 190px;
+  }
+
+  .fit-row .control-hint {
+    display: none;
+  }
+}

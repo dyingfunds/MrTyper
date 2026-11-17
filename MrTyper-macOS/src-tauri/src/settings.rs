@@ -159,6 +159,7 @@ impl Default for AppSettings {
             hotkey_pause: "F9".into(),
             script_commands: true,
             check_updates: true,
+            mini_window: true,
         }
     }
 }
@@ -178,6 +179,8 @@ pub struct AppSettings {
     pub script_commands: bool,
     /// Look for a new version on GitHub when MrTyper opens.
     pub check_updates: bool,
+    /// Show the floating mini window while a session runs.
+    pub mini_window: bool,
 }
 
 impl AppSettings {

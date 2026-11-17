@@ -197,3 +197,39 @@ pub fn can_self_update() -> bool {
         true
     }
 }
+
+/// Write exported presets to the user's Downloads folder (or Documents, or
+/// home) and return the file's path. A file of the same name is never
+/// overwritten: " (2)", " (3)"… is added instead.
+#[tauri::command]
+pub async fn export_presets(
+    app: AppHandle,
+    file_name: String,
+    contents: String,
+) -> Result<String, String> {
+    let paths = app.path();
+    let folder = paths
+        .download_dir()
+        .or_else(|_| paths.document_dir())
+        .or_else(|_| paths.home_dir())
+        .map_err(|error| format!("Couldn't find a folder to save into: {error}"))?;
+
+    let stem: String = file_name
+        .trim_end_matches(".json")
+        .chars()
+        .filter(|character| character.is_alphanumeric() || matches!(character, ' ' | '-' | '_' | '.'))
+        .take(80)
+        .collect();
+    let stem = stem.trim().trim_matches('.');
+    let stem = if stem.is_empty() { "MrTyper presets" } else { stem };
+
+    let mut path = folder.join(format!("{stem}.json"));
+    let mut copy = 2;
+    while path.exists() {
+        path = folder.join(format!("{stem} ({copy}).json"));
+        copy += 1;
+    }
+    std::fs::write(&path, contents)
+        .map_err(|error| format!("Couldn't save {}: {error}", path.display()))?;
+    Ok(path.to_string_lossy().into_owned())
+}

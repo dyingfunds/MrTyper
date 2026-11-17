@@ -16,6 +16,7 @@ use tauri::{AppHandle, Emitter};
 
 use crate::hotkeys;
 use crate::input;
+use crate::mini;
 use crate::script::{self, Action, Step};
 use crate::settings::{AppSettings, TypingSettings};
 
@@ -88,6 +89,8 @@ struct PhaseEvent {
     run_id: u64,
     countdown: Option<u32>,
     total: usize,
+    /// The pause came from a `{{hold}}` command in the script.
+    held: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -296,6 +299,7 @@ impl Engine {
         *guard = Some(Arc::clone(&run));
         drop(guard);
 
+        let show_mini = settings.mini_window;
         let engine = Arc::clone(self);
         let worker_run = Arc::clone(&run);
         let worker_app = app.clone();
@@ -313,6 +317,9 @@ impl Engine {
             return Err(format!("Could not start the typing thread: {error}"));
         }
 
+        if show_mini {
+            mini::show(&app);
+        }
         Ok(())
     }
 
@@ -349,6 +356,7 @@ impl Engine {
     fn finish(&self, app: AppHandle, run: Arc<RunControl>, outcome: SessionOutcome) {
         self.clear_active(run.id);
         hotkeys::unregister_escape(&app);
+        mini::hide(&app);
 
         let typed = run.typed.load(Ordering::SeqCst);
         if matches!(outcome.reason, FinishReason::Error) {
@@ -536,6 +544,23 @@ fn run_session(
             Action::Char(character) => input::send_char(character).map(|()| 1),
             Action::Combo(combo) => input::send_combo(&combo).map(|()| 0),
             Action::Pause(_) => Ok(0),
+            Action::Hold => {
+                // Waits in the next checkpoint until the user resumes; focus
+                // is checked again before the following key.
+                if run.pause() {
+                    emit_phase_held(app, run);
+                    crate::actions::toast(
+                        app,
+                        "info",
+                        "Holding",
+                        format!(
+                            "The script asked to wait. Press {} to carry on.",
+                            settings.hotkey_pause
+                        ),
+                    );
+                }
+                Ok(0)
+            }
         };
         match sent {
             Ok(count) => {
@@ -545,7 +570,7 @@ fn run_session(
         }
 
         run.typed.store(entry.source_end, Ordering::SeqCst);
-        if !matches!(entry.action, Action::Pause(_)) {
+        if !matches!(entry.action, Action::Pause(_) | Action::Hold) {
             emit_keystroke(app, run, entry.source_end, "key");
         }
 
@@ -618,6 +643,20 @@ fn emit_phase(app: &AppHandle, run: &RunControl, phase: &'static str, countdown:
             run_id: run.id,
             countdown,
             total: run.total,
+            held: false,
+        },
+    );
+}
+
+fn emit_phase_held(app: &AppHandle, run: &RunControl) {
+    let _ = app.emit(
+        EVENT_PHASE,
+        PhaseEvent {
+            phase: "paused",
+            run_id: run.id,
+            countdown: None,
+            total: run.total,
+            held: true,
         },
     );
 }
@@ -752,6 +791,8 @@ fn build_plan(steps: &[Step], settings: &TypingSettings, seed: Option<u64>) -> T
 
         let (pre_delay_ms, post_delay_ms, typo) = match step.action {
             Action::Pause(milliseconds) => (milliseconds as f64, 0.0, None),
+            // The wait is the user's; it has no planned length.
+            Action::Hold => (0.0, 0.0, None),
             Action::Combo(_) => {
                 // Reaching for a shortcut takes a moment longer than a key, and
                 // the app needs a beat to apply it before typing resumes.
@@ -1211,6 +1252,16 @@ mod tests {
         assert!(plan.entries[1].typo.is_none());
         assert_eq!(plan.entries[3].action, Action::Pause(2000));
         assert_eq!(plan.entries[3].pre_delay_ms, 2000.0);
+    }
+
+    #[test]
+    fn a_hold_adds_no_planned_time() {
+        let settings = quiet_profile();
+        let with_hold = build("ab{{hold}}cd", &settings, 11);
+        assert_eq!(with_hold.entries[2].action, Action::Hold);
+        assert_eq!(with_hold.entries[2].pre_delay_ms, 0.0);
+        assert_eq!(with_hold.entries[2].post_delay_ms, 0.0);
+        assert_eq!(with_hold.entries[2].source_end, 10);
     }
 
     #[test]

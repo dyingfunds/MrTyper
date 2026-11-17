@@ -69,6 +69,8 @@ export interface AppSettings {
   scriptCommands: boolean;
   /** Look for a new version when MrTyper opens. */
   checkUpdates: boolean;
+  /** Show the floating mini window while a session runs. */
+  miniWindow: boolean;
 }
 
 export interface Preset {
@@ -113,6 +115,8 @@ export interface PhasePayload {
   runId: number;
   countdown: number | null;
   total: number;
+  /** The pause came from a {{hold}} command in the script. */
+  held?: boolean;
 }
 
 export interface ProgressPayload {
@@ -179,6 +183,8 @@ export interface SessionSummary {
 
 export interface LiveEngineState {
   phase: Phase;
+  /** Paused by a {{hold}} command, waiting for the user to resume. */
+  held: boolean;
   countdown: number | null;
   typed: number;
   total: number;

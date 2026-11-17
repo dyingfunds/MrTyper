@@ -5,7 +5,7 @@
  * the two in step.
  */
 
-export type CommandKind = "shortcut" | "pause";
+export type CommandKind = "shortcut" | "pause" | "hold";
 
 export interface ScriptPiece {
   /** A typed character, or the full text of a command. */
@@ -74,7 +74,9 @@ export function resolveCommand(rawBody: string): ScriptPiece["command"] | null {
   if (!body) return null;
   const pauseMs = parsePause(body);
   if (pauseMs !== null) return { kind: "pause", pauseMs };
-  if (NAMED.has(body.replace(/[\s_-]/g, ""))) return { kind: "shortcut" };
+  const compact = body.replace(/[\s_-]/g, "");
+  if (compact === "hold" || compact === "waitforme") return { kind: "hold" };
+  if (NAMED.has(compact)) return { kind: "shortcut" };
   return isCombo(body) ? { kind: "shortcut" } : null;
 }
 
@@ -142,6 +144,8 @@ export interface CommandOption {
 
 export interface CommandGroup {
   label: string;
+  /** Short options drawn as a row of chips instead of a list. */
+  compact?: boolean;
   options: CommandOption[];
 }
 
@@ -187,9 +191,15 @@ export const COMMAND_GROUPS: CommandGroup[] = [
   },
   {
     label: "Timing",
+    compact: true,
     options: [
-      { token: "pause 1", label: "Pause 1 second", keys: both("—", "—") },
-      { token: "pause 3", label: "Pause 3 seconds", keys: both("—", "—") },
+      { token: "pause 1", label: "1s", keys: both("—", "—") },
+      { token: "pause 3", label: "3s", keys: both("—", "—") },
+      { token: "pause 5", label: "5s", keys: both("—", "—") },
+      { token: "pause 10", label: "10s", keys: both("—", "—") },
+      { token: "pause 15", label: "15s", keys: both("—", "—") },
+      { token: "pause 20", label: "20s", keys: both("—", "—") },
+      { token: "hold", label: "Hold until I resume", keys: both("—", "—") },
     ],
   },
 ];

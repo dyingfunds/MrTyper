@@ -17,6 +17,7 @@ import {
   bootstrap,
   deletePreset,
   emergencyStop,
+  exportPresetsFile,
   friendlyError,
   getEngineStatus,
   hideWindow,
@@ -30,6 +31,7 @@ import {
   readWindowBounds,
   renamePreset,
   resumeTyping,
+  revealFile,
   saveLastText,
   savePreset,
   saveSettings,
@@ -48,6 +50,12 @@ import {
 } from "./lib/defaults";
 import { celebrate, useKonamiCode } from "./lib/easterEgg";
 import { liveBus } from "./lib/liveBus";
+import {
+  parsePresetFile,
+  presetFileContents,
+  presetFileName,
+  uniquePresetName,
+} from "./lib/presetFiles";
 import { pageEnter, pageExit, springSoft } from "./lib/motion";
 import {
   REDUCED_MOTION_QUERY,
@@ -90,6 +98,7 @@ import type {
 
 const EMPTY_ENGINE: LiveEngineState = {
   phase: "idle",
+  held: false,
   countdown: null,
   typed: 0,
   total: 0,
@@ -166,11 +175,13 @@ function App() {
   const settingsRef = useRef(settings);
   const textRef = useRef(text);
   const tabRef = useRef(tab);
+  const presetsRef = useRef(presets);
 
   enginePhaseRef.current = engine.phase;
   settingsRef.current = settings;
   textRef.current = text;
   tabRef.current = tab;
+  presetsRef.current = presets;
 
   const resolvedTheme: ResolvedTheme =
     settings.theme === "system" ? (systemDark ? "dark" : "light") : settings.theme;
@@ -252,6 +263,7 @@ function App() {
             activeRunId.current = status.runId;
             setEngine({
               phase: status.phase,
+              held: false,
               countdown: status.countdown,
               typed: status.typed,
               total: status.total,
@@ -335,7 +347,7 @@ function App() {
           setEngine((current) =>
             current.phase === "idle"
               ? current
-              : { ...current, phase: "idle", countdown: null },
+              : { ...current, phase: "idle", held: false, countdown: null },
           );
           return;
         }
@@ -352,6 +364,7 @@ function App() {
           return {
             ...base,
             phase: payload.phase,
+            held: payload.phase === "paused" && Boolean(payload.held),
             countdown: payload.countdown,
             runId: payload.runId,
             total: payload.total,
@@ -387,6 +400,7 @@ function App() {
         setEngine((current) => ({
           ...current,
           phase: "idle",
+          held: false,
           countdown: null,
           runId: payload.runId,
           typed: payload.typed,
@@ -861,6 +875,52 @@ function App() {
     [notify, setTab],
   );
 
+  const handleExportPresets = useCallback(
+    async (chosen: Preset[]) => {
+      if (!chosen.length) return;
+      try {
+        const path = await exportPresetsFile(presetFileName(chosen), presetFileContents(chosen));
+        const what = chosen.length === 1 ? `“${chosen[0].name}”` : `${chosen.length} presets`;
+        if (path) {
+          notify("success", "Presets exported", `${what} saved to ${path}.`);
+          void revealFile(path).catch(() => undefined);
+        } else {
+          notify("success", "Presets exported", `${what} downloaded as a file.`);
+        }
+      } catch (error) {
+        notify("error", "Couldn't export presets", friendlyError(error));
+      }
+    },
+    [notify],
+  );
+
+  const handleImportPresets = useCallback(
+    async (file: File) => {
+      try {
+        if (file.size > 2_000_000) throw new Error("That file is too big to be a preset file.");
+        const incoming = parsePresetFile(await file.text());
+        const taken = new Set(presetsRef.current.map((preset) => preset.name.toLowerCase()));
+        const added: Preset[] = [];
+        for (const item of incoming) {
+          const name = uniquePresetName(item.name, taken);
+          taken.add(name.toLowerCase());
+          added.push(await savePreset(name, item.typing));
+        }
+        setPresets((current) => [...added.reverse(), ...current]);
+        notify(
+          "success",
+          "Presets imported",
+          added.length === 1
+            ? `“${added[0].name}” is ready to load.`
+            : `${added.length} presets are ready to load.`,
+        );
+      } catch (error) {
+        notify("error", "Couldn't import presets", friendlyError(error));
+      }
+    },
+    [notify],
+  );
+
   const openType = useCallback(() => setTab("type"), [setTab]);
   const openSettings = useCallback(() => setTab("settings"), [setTab]);
 
@@ -959,6 +1019,8 @@ function App() {
                       onRenamePreset={handleRenamePreset}
                       onDeletePreset={handleDeletePreset}
                       onLoadPreset={handleLoadPreset}
+                      onExportPresets={handleExportPresets}
+                      onImportPresets={handleImportPresets}
                       onStartFresh={openType}
                       notify={notify}
                     />

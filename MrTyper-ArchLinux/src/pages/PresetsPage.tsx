@@ -3,11 +3,13 @@ import {
   ArrowUpRight,
   BookmarkPlus,
   Check,
+  Download,
+  FileUp,
   Pencil,
   SlidersHorizontal,
   Trash2,
 } from "lucide-react";
-import { memo, useEffect, useMemo, useState, type CSSProperties } from "react";
+import { memo, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { Modal } from "../components/Modal";
 import { Button, IconButton } from "../components/ui/Button";
 import { simulateCadence } from "../lib/cadence";
@@ -28,6 +30,8 @@ interface PresetsPageProps {
   onRenamePreset: (id: string, name: string) => Promise<boolean>;
   onDeletePreset: (id: string) => Promise<boolean>;
   onLoadPreset: (preset: Preset) => void;
+  onExportPresets: (presets: Preset[]) => void;
+  onImportPresets: (file: File) => void;
   onStartFresh: () => void;
   notify: Notify;
 }
@@ -54,6 +58,7 @@ interface PresetCardProps {
   active: boolean;
   index: number;
   onLoad: (preset: Preset) => void;
+  onExport: (presets: Preset[]) => void;
   onRename: (preset: Preset) => void;
   onDelete: (preset: Preset) => void;
 }
@@ -63,6 +68,7 @@ const PresetCard = memo(function PresetCard({
   active,
   index,
   onLoad,
+  onExport,
   onRename,
   onDelete,
 }: PresetCardProps) {
@@ -140,6 +146,14 @@ const PresetCard = memo(function PresetCard({
             {active ? "Loaded" : "Load preset"}
           </Button>
           <IconButton
+            label="Export to a file"
+            tipSide="top"
+            aria-label={`Export ${preset.name}`}
+            onClick={() => onExport([preset])}
+          >
+            <Download size={14} strokeWidth={1.8} />
+          </IconButton>
+          <IconButton
             label="Rename"
             tipSide="top"
             aria-label={`Rename ${preset.name}`}
@@ -169,10 +183,13 @@ export const PresetsPage = memo(function PresetsPage({
   onRenamePreset,
   onDeletePreset,
   onLoadPreset,
+  onExportPresets,
+  onImportPresets,
   onStartFresh,
   notify,
 }: PresetsPageProps) {
   const [dialog, setDialog] = useState<Dialog>(null);
+  const importRef = useRef<HTMLInputElement>(null);
   const [name, setName] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -247,6 +264,25 @@ export const PresetsPage = memo(function PresetsPage({
             </p>
           </div>
           <div className="page-head-actions">
+            <input
+              ref={importRef}
+              type="file"
+              accept=".json,application/json"
+              hidden
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                event.target.value = "";
+                if (file) onImportPresets(file);
+              }}
+            />
+            <Button size="lg" icon={FileUp} onClick={() => importRef.current?.click()}>
+              Import
+            </Button>
+            {presets.length > 0 ? (
+              <Button size="lg" icon={Download} onClick={() => onExportPresets(presets)}>
+                Export all
+              </Button>
+            ) : null}
             <Button
               variant="primary"
               size="lg"
@@ -288,6 +324,7 @@ export const PresetsPage = memo(function PresetsPage({
                   index={index}
                   active={JSON.stringify(preset.typing) === currentSignature}
                   onLoad={onLoadPreset}
+                  onExport={onExportPresets}
                   onRename={openRename}
                   onDelete={openDelete}
                 />
@@ -299,6 +336,7 @@ export const PresetsPage = memo(function PresetsPage({
         <p className="page-note">
           Presets store the performance only: tempo, head start, and every
           humanize setting. Theme, shortcuts, and safety stay as you set them.
+          Exported preset files can be imported into MrTyper on any computer.
         </p>
       </div>
 

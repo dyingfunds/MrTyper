@@ -45,6 +45,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   hotkeyPause: "F9",
   scriptCommands: true,
   checkUpdates: true,
+  miniWindow: true,
 };
 
 export const PRESET_BLUEPRINTS: Array<{
@@ -200,6 +201,7 @@ export function normalizeSettings(value: Partial<AppSettings> | undefined): AppS
     hotkeyPause: validHotkey(merged.hotkeyPause) ? merged.hotkeyPause : "F9",
     scriptCommands: Boolean(merged.scriptCommands),
     checkUpdates: Boolean(merged.checkUpdates),
+    miniWindow: Boolean(merged.miniWindow),
   };
 }
 

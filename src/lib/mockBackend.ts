@@ -34,7 +34,7 @@ interface MockRun {
   text: string;
   chars: string[];
   /** Commands by the code-point offset they start at: length and pause. */
-  commands: Map<number, { length: number; pauseMs: number }>;
+  commands: Map<number, { length: number; pauseMs: number; hold: boolean }>;
   settings: AppSettings;
   index: number;
   phase: Phase;
@@ -142,12 +142,16 @@ class MockBackend {
     this.persist();
 
     const chars = Array.from(text);
-    const commands = new Map<number, { length: number; pauseMs: number }>();
+    const commands = new Map<number, { length: number; pauseMs: number; hold: boolean }>();
     let offset = 0;
     for (const piece of splitScript(text, this.state.settings.scriptCommands)) {
       const length = Array.from(piece.text).length;
       if (piece.command) {
-        commands.set(offset, { length, pauseMs: piece.command.pauseMs ?? 0 });
+        commands.set(offset, {
+          length,
+          pauseMs: piece.command.pauseMs ?? 0,
+          hold: piece.command.kind === "hold",
+        });
       }
       offset += length;
     }
@@ -296,12 +300,13 @@ class MockBackend {
     }
   }
 
-  private emitPhase(run: MockRun) {
+  private emitPhase(run: MockRun, held = false) {
     this.emit("typing-phase", {
       phase: run.phase,
       runId: run.runId,
       countdown: run.phase === "countdown" ? run.countdown : null,
       total: run.chars.length,
+      held,
     });
   }
 
@@ -361,6 +366,11 @@ class MockBackend {
       if (run.index >= run.chars.length) {
         this.finish(run, "completed");
         return;
+      }
+      if (command.hold) {
+        run.phase = "paused";
+        run.paused = true;
+        this.emitPhase(run, true);
       }
       this.scheduleNext(run, command.pauseMs || 220);
       return;

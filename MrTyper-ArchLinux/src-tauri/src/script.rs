@@ -7,7 +7,8 @@
 //! * named commands such as `{{bold}}`, `{{h1}}` or `{{bigger}}`;
 //! * raw shortcuts such as `{{ctrl+shift+k}}` or `{{mod+b}}`, where `mod` is
 //!   Command on macOS and Ctrl elsewhere, and lone keys such as `{{enter}}`;
-//! * pauses such as `{{pause 2}}`, `{{pause 1.5s}}` or `{{wait 400ms}}`.
+//! * pauses such as `{{pause 2}}`, `{{pause 1.5s}}` or `{{wait 400ms}}`;
+//! * `{{hold}}`, which pauses the session until the user resumes it.
 //!
 //! Anything in braces that isn't a known command is typed literally, so normal
 //! text never needs escaping.
@@ -71,6 +72,8 @@ pub enum Action {
     Combo(KeyCombo),
     /// Hold still for this many milliseconds.
     Pause(u64),
+    /// Pause the session until the user resumes it (the pause hotkey).
+    Hold,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -142,6 +145,9 @@ pub fn resolve(body: &str) -> Option<Action> {
         .chars()
         .filter(|character| !matches!(character, ' ' | '-' | '_'))
         .collect();
+    if matches!(compact.as_str(), "hold" | "waitforme") {
+        return Some(Action::Hold);
+    }
     if let Some(combo) = named_command(&compact) {
         return Some(Action::Combo(combo));
     }
@@ -383,6 +389,13 @@ mod tests {
         assert_eq!(resolve("pause 0"), None);
         assert_eq!(resolve("pause 61"), None);
         assert_eq!(resolve("pause soon"), None);
+    }
+
+    #[test]
+    fn hold_waits_for_the_user() {
+        assert_eq!(resolve("hold"), Some(Action::Hold));
+        assert_eq!(resolve(" Wait for me "), Some(Action::Hold));
+        assert_eq!(resolve("hold 3"), None);
     }
 
     #[test]

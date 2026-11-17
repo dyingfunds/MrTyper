@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import type {
   AppSettings,
   BackendEvents,
@@ -79,6 +80,26 @@ export async function renamePreset(id: string, name: string): Promise<Preset> {
 export async function deletePreset(id: string): Promise<void> {
   if (!isTauri) return mockBackend.deletePreset(id);
   await invoke("delete_preset", { id });
+}
+
+/** Save exported presets; returns where the file went (null in a browser preview). */
+export async function exportPresetsFile(fileName: string, contents: string): Promise<string | null> {
+  if (!isTauri) {
+    const url = URL.createObjectURL(new Blob([contents], { type: "application/json" }));
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = fileName;
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    return null;
+  }
+  return invoke<string>("export_presets", { fileName, contents });
+}
+
+/** Show a saved file in Explorer, Finder or the file manager. */
+export async function revealFile(path: string): Promise<void> {
+  if (!isTauri) return;
+  await revealItemInDir(path);
 }
 
 export async function onBackendEvent<K extends keyof BackendEvents>(
