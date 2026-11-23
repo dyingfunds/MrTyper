@@ -37,6 +37,24 @@ pub fn show(app: &AppHandle) {
         };
         let _ = window.show();
         let _ = window.set_always_on_top(true);
+        // Window managers on Linux place a window themselves when it is first
+        // shown, ignoring a position set while it was hidden. Place it again
+        // now it's visible, and once more after the window manager is done.
+        #[cfg(target_os = "linux")]
+        {
+            place_top_center(&handle, &window);
+            let later = handle.clone();
+            std::thread::spawn(move || {
+                std::thread::sleep(std::time::Duration::from_millis(150));
+                let inner = later.clone();
+                let _ = later.run_on_main_thread(move || {
+                    if let Some(window) = inner.get_webview_window(LABEL) {
+                        place_top_center(&inner, &window);
+                        let _ = window.set_always_on_top(true);
+                    }
+                });
+            });
+        }
     });
 }
 
@@ -70,6 +88,17 @@ fn create(app: &AppHandle) -> tauri::Result<tauri::WebviewWindow> {
     #[cfg(target_os = "windows")]
     {
         builder = builder.transparent(true);
+    }
+
+    // GTK grows a non-resizable window to its webview's natural size, about
+    // 200 px tall, so the bar's height was ignored. A resizable window keeps
+    // the size it's given, and equal min and max sizes still pin it.
+    #[cfg(target_os = "linux")]
+    {
+        builder = builder
+            .resizable(true)
+            .min_inner_size(WIDTH, HEIGHT)
+            .max_inner_size(WIDTH, HEIGHT);
     }
 
     if let Some(directory) = app.try_state::<WebviewDataDir>() {

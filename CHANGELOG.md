@@ -4,6 +4,14 @@ All notable changes to MrTyper. The format follows [Keep a Changelog](https://ke
 
 ## [Unreleased]
 
+## [2.2.1] - 2026-11-23
+
+A fix for the mini window on Linux.
+
+### Fixed
+
+- **Linux: the mini window is the right size and sits at the top of the screen.** It was about 200 px tall and placed in the middle, because GTK grew it to the webview's natural size and the window manager ignored the position set before it was shown.
+
 ## [2.2.0] - 2026-11-16
 
 Open Word and Markdown files, a hold command, a mini window, preset sharing and a calmer look.
@@ -137,7 +145,9 @@ The redesign release, and the first with macOS and Linux apps. Ready-made instal
 
 Initial release: a Windows app with a liquid-glass interface, the human-cadence typing engine, presets, global hotkeys, the tray, and an NSIS installer.
 
-[Unreleased]: https://github.com/dyingfunds/MrTyper/compare/v2.1.2...HEAD
+[Unreleased]: https://github.com/dyingfunds/MrTyper/compare/v2.2.1...HEAD
+[2.2.1]: https://github.com/dyingfunds/MrTyper/compare/v2.2.0...v2.2.1
+[2.2.0]: https://github.com/dyingfunds/MrTyper/compare/v2.1.2...v2.2.0
 [2.1.2]: https://github.com/dyingfunds/MrTyper/compare/v2.1.1...v2.1.2
 [2.1.1]: https://github.com/dyingfunds/MrTyper/compare/v2.1.0...v2.1.1
 [2.1.0]: https://github.com/dyingfunds/MrTyper/compare/v2.0.0...v2.1.0
