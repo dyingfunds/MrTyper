@@ -36,7 +36,7 @@ pub fn start_or_stop(app: &AppHandle) {
         return;
     }
 
-    if let Err(error) = engine.start(app.clone(), text, settings) {
+    if let Err(error) = engine.start(app.clone(), text, settings, 0) {
         reveal_window(app);
         toast(app, "error", "Couldn't start typing", error);
     }

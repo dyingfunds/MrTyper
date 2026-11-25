@@ -4,6 +4,16 @@ All notable changes to MrTyper. The format follows [Keep a Changelog](https://ke
 
 ## [Unreleased]
 
+## [2.3.0] - 2026-11-25
+
+Command suggestions as you type, carrying on after a stop, and four new presets.
+
+### Added
+
+- **Command suggestions.** Type `/` at the start of a word, or `{{`, and a list of matching commands appears at the cursor: `/bo` offers Bold, `{{he` offers the headings. Use ↑ and ↓ to choose, Enter or Tab to insert it as `{{command}}`, and Esc to close the list. `/pause 7` or `{{wait 1.5s` offers exactly that pause. A `/` inside a word, such as "and/or", is left alone.
+- **Carry on after a stop.** When a session stops part way (Stop, Esc, focus lost or an error), a strip above the script shows where it got to. Start carries on from there, or choose **From cursor** (click in the script first) or **From the top**. A start point inside a `{{command}}` moves back to the start of that command. Editing the text before the start point clears it.
+- **Four new presets:** **Slow & realistic** (30–48 WPM, thinking pauses, warm-up and fatigue), **Hunt & peck** (16–30 WPM with long pauses between words), **Typo storm** (a typo chance of 15%, often noticed late) and **Tired, late night** (34–64 WPM, slowing down a lot, with frequent typos). Existing installs get them once on the next launch; deleting them afterwards keeps them deleted.
+
 ## [2.2.1] - 2026-11-23
 
 A fix for the mini window on Linux.
@@ -145,7 +155,8 @@ The redesign release, and the first with macOS and Linux apps. Ready-made instal
 
 Initial release: a Windows app with a liquid-glass interface, the human-cadence typing engine, presets, global hotkeys, the tray, and an NSIS installer.
 
-[Unreleased]: https://github.com/dyingfunds/MrTyper/compare/v2.2.1...HEAD
+[Unreleased]: https://github.com/dyingfunds/MrTyper/compare/v2.3.0...HEAD
+[2.3.0]: https://github.com/dyingfunds/MrTyper/compare/v2.2.1...v2.3.0
 [2.2.1]: https://github.com/dyingfunds/MrTyper/compare/v2.2.0...v2.2.1
 [2.2.0]: https://github.com/dyingfunds/MrTyper/compare/v2.1.2...v2.2.0
 [2.1.2]: https://github.com/dyingfunds/MrTyper/compare/v2.1.1...v2.1.2

@@ -203,3 +203,114 @@ export const COMMAND_GROUPS: CommandGroup[] = [
     ],
   },
 ];
+
+/* ------------------------------------------------------------------ */
+/*  Suggestions while typing                                           */
+/* ------------------------------------------------------------------ */
+
+/** A command being typed at the cursor: `/bo` or `{{bo`. */
+export interface CommandTrigger {
+  /** Where the `/` or `{{` starts (string index). */
+  start: number;
+  /** The cursor (string index). */
+  end: number;
+  /** What has been typed after the `/` or `{{`. */
+  query: string;
+  form: "slash" | "braces";
+}
+
+/** The longest query worth suggesting for; longer text is just text. */
+const MAX_QUERY = 24;
+
+/**
+ * The command being typed just before the cursor, if any. A `/` only counts
+ * at the start of a line or after a space, so "and/or" and URLs are left
+ * alone.
+ */
+export function findCommandTrigger(text: string, caret: number): CommandTrigger | null {
+  const lineStart = text.lastIndexOf("\n", caret - 1) + 1;
+  const before = text.slice(Math.max(lineStart, caret - MAX_QUERY - 2), caret);
+
+  const braces = /\{\{([a-z0-9 +.\-]*)$/i.exec(before);
+  if (braces) {
+    return {
+      start: caret - braces[0].length,
+      end: caret,
+      query: braces[1],
+      form: "braces",
+    };
+  }
+
+  // Letters, plus an optional number for pauses: "/pause 7" or "/wait 1.5s".
+  const slash = /(?:^|\s)\/((?:pause|wait) [0-9.]*(?:ms|s)?|[a-z0-9]*)$/i.exec(before);
+  if (slash) {
+    const start = caret - slash[1].length - 1;
+    // `^` above matches the start of the slice, which is only a real line
+    // start when the slice began there.
+    if (start > lineStart && !/\s/.test(text[start - 1])) return null;
+    return { start, end: caret, query: slash[1], form: "slash" };
+  }
+
+  return null;
+}
+
+export interface CommandSuggestion {
+  token: string;
+  label: string;
+  /** The shortcut it presses, or empty for pauses. */
+  keys: string;
+}
+
+const ALL_OPTIONS = COMMAND_GROUPS.flatMap((group) =>
+  group.options.map((option) => ({ option, group: group.label })),
+);
+
+/** Commands matching what has been typed, best first. */
+export function suggestCommands(
+  rawQuery: string,
+  mac: boolean,
+  limit = 8,
+): CommandSuggestion[] {
+  const query = rawQuery.trim().toLowerCase();
+  const compact = query.replace(/[\s_-]/g, "");
+  const scored: Array<{ suggestion: CommandSuggestion; score: number; order: number }> = [];
+
+  ALL_OPTIONS.forEach(({ option, group }, order) => {
+    const token = option.token.toLowerCase();
+    const label =
+      group === "Timing" && option.token.startsWith("pause")
+        ? `Pause ${option.label}`
+        : option.label;
+    const labelWords = label.toLowerCase().split(/\s+/);
+    const groupWords = group.toLowerCase().split(/\s+/);
+    let score: number;
+    if (!compact) score = 0;
+    else if (token.replace(/\s/g, "").startsWith(compact)) score = 1;
+    else if (labelWords.some((word) => word.startsWith(query))) score = 2;
+    else if (token.includes(compact) || label.toLowerCase().includes(query)) score = 3;
+    else if (groupWords.some((word) => word.startsWith(query))) score = 4;
+    else return;
+    const keys = mac ? option.keys.mac : option.keys.other;
+    scored.push({
+      suggestion: { token: option.token, label, keys: keys === "—" ? "" : keys },
+      score,
+      order,
+    });
+  });
+
+  // "pause 7" or "wait 2.5s": offer exactly that pause, first.
+  const custom = resolveCommand(query);
+  if (custom?.kind === "pause" && !scored.some((item) => item.suggestion.token === query)) {
+    const seconds = (custom.pauseMs ?? 0) / 1000;
+    scored.push({
+      suggestion: { token: query, label: `Pause ${seconds}s`, keys: "" },
+      score: -1,
+      order: -1,
+    });
+  }
+
+  return scored
+    .sort((a, b) => a.score - b.score || a.order - b.order)
+    .slice(0, limit)
+    .map((item) => item.suggestion);
+}

@@ -21,9 +21,11 @@ import {
   useState,
   type CSSProperties,
   type DragEvent as ReactDragEvent,
+  type KeyboardEvent as ReactKeyboardEvent,
   type ReactNode,
 } from "react";
 import { CadenceScope } from "../components/CadenceScope";
+import { CommandSuggest } from "../components/CommandSuggest";
 import { LiveScript } from "../components/LiveScript";
 import { ScriptHighlight } from "../components/ScriptHighlight";
 import { Tachometer } from "../components/Tachometer";
@@ -32,10 +34,17 @@ import { IconButton } from "../components/ui/Button";
 import { Keycap } from "../components/ui/Keycap";
 import { NumberField } from "../components/ui/NumberField";
 import { RangeSlider, Slider } from "../components/ui/Slider";
+import { caretBox } from "../lib/caret";
 import { humanLabel, humanScore } from "../lib/cadence";
 import { springSnappy } from "../lib/motion";
 import { PLATFORM } from "../lib/platform";
-import { COMMAND_GROUPS, typedText } from "../lib/scriptCommands";
+import {
+  COMMAND_GROUPS,
+  findCommandTrigger,
+  suggestCommands,
+  typedText,
+  type CommandSuggestion,
+} from "../lib/scriptCommands";
 import {
   averageWpm,
   characterCount,
@@ -47,6 +56,7 @@ import {
   formatHotkey,
   formatNumber,
   formatWpm,
+  indexOfCodePoint,
   normalizeScript,
   wordCount,
 } from "../lib/utils";
@@ -72,6 +82,9 @@ interface TypePageProps {
   lastRun: SessionSummary | null;
   paletteKey: string;
   showScope: boolean;
+  /** Where the next run starts, in code points; null is the top. */
+  startAt: number | null;
+  onStartAtChange: (startAt: number | null) => void;
   onTextChange: (text: string) => void;
   onTypingChange: (patch: Partial<TypingSettings>) => void;
   onStart: () => void;
@@ -204,8 +217,57 @@ interface StageProps {
   total: number;
   counts: ScriptCounts;
   scriptCommands: boolean;
+  startAt: number | null;
+  onStartAtChange: (startAt: number | null) => void;
   onTextChange: (text: string) => void;
   notify: Notify;
+}
+
+/**
+ * After a run stops part way, the next one can carry on from where it got
+ * to, from the cursor, or from the top.
+ */
+function StartPoint({
+  text,
+  startAt,
+  onUseCursor,
+  onShow,
+  onClear,
+}: {
+  text: string;
+  startAt: number;
+  onUseCursor: () => void;
+  onShow: () => void;
+  onClear: () => void;
+}) {
+  const total = characterCount(text);
+  const index = indexOfCodePoint(text, startAt);
+  const preview = text.slice(index, index + 48).replace(/\s+/g, " ").trim();
+  const percent = total ? Math.floor((startAt / total) * 100) : 0;
+  return (
+    <div className="start-point" role="status">
+      <span className="start-point-copy">
+        <span className="label">Next run starts at {percent}%</span>
+        <button type="button" className="start-point-preview" onClick={onShow} title="Show in the script">
+          {preview ? `“${preview}${index + 48 < text.length ? "…" : ""}”` : "the end of the script"}
+        </button>
+      </span>
+      <span className="start-point-actions">
+        <button
+          type="button"
+          className="start-point-btn"
+          onMouseDown={(event) => event.preventDefault()}
+          onClick={onUseCursor}
+          title="Click in the script first, then use this to start from there"
+        >
+          From cursor
+        </button>
+        <button type="button" className="start-point-btn" onClick={onClear}>
+          From the top
+        </button>
+      </span>
+    </div>
+  );
 }
 
 const Stage = memo(function Stage({
@@ -215,6 +277,8 @@ const Stage = memo(function Stage({
   total,
   counts,
   scriptCommands,
+  startAt,
+  onStartAtChange,
   onTextChange,
   notify,
 }: StageProps) {
@@ -253,6 +317,102 @@ const Stage = memo(function Stage({
     },
     [onTextChange, text],
   );
+
+  /* Command suggestions while typing `/bo` or `{{bo` ------------------ */
+
+  const stageBodyRef = useRef<HTMLDivElement>(null);
+  const [caret, setCaret] = useState<number | null>(null);
+  const [activeSuggestion, setActiveSuggestion] = useState(0);
+  /** A trigger the user closed with Esc stays closed until it changes. */
+  const [dismissedAt, setDismissedAt] = useState<number | null>(null);
+  const [suggestBox, setSuggestBox] = useState<{ left: number; top: number; above: boolean } | null>(
+    null,
+  );
+
+  const trigger = useMemo(
+    () => (scriptCommands && isIdle && caret !== null ? findCommandTrigger(text, caret) : null),
+    [caret, isIdle, scriptCommands, text],
+  );
+  const suggestions = useMemo(
+    () => (trigger ? suggestCommands(trigger.query, IS_MAC) : []),
+    [trigger],
+  );
+  const suggesting = Boolean(trigger) && suggestions.length > 0 && dismissedAt !== trigger?.start;
+  const triggerStart = trigger?.start ?? null;
+  const triggerQuery = trigger?.query ?? null;
+
+  useEffect(() => {
+    setActiveSuggestion(0);
+  }, [triggerStart, triggerQuery]);
+
+  useEffect(() => {
+    if (dismissedAt !== null && dismissedAt !== triggerStart) setDismissedAt(null);
+  }, [dismissedAt, triggerStart]);
+
+  const placeSuggestions = useCallback(() => {
+    const element = textareaRef.current;
+    const body = stageBodyRef.current;
+    if (!element || !body || triggerStart === null) {
+      setSuggestBox(null);
+      return;
+    }
+    const box = caretBox(element, triggerStart);
+    const listWidth = 300;
+    const listHeight = 300;
+    const left = Math.max(8, Math.min(box.left, body.clientWidth - listWidth - 8));
+    const below = box.top + box.height + 4;
+    const above = below + listHeight > body.clientHeight && box.top > listHeight / 2;
+    setSuggestBox({ left, top: above ? box.top - 4 : below, above });
+  }, [triggerStart]);
+
+  useLayoutEffect(() => {
+    if (suggesting) placeSuggestions();
+    else setSuggestBox(null);
+  }, [placeSuggestions, suggesting]);
+
+  const readCaret = useCallback(() => {
+    const element = textareaRef.current;
+    if (!element) return;
+    setCaret(element.selectionStart === element.selectionEnd ? element.selectionStart : null);
+  }, []);
+
+  const pickSuggestion = useCallback(
+    (suggestion: CommandSuggestion) => {
+      const element = textareaRef.current;
+      if (!trigger || !element) return;
+      let end = trigger.end;
+      // Typing `{{bo}}` then picking: don't leave the old closing braces.
+      if (trigger.form === "braces") {
+        if (text.startsWith("}}", end)) end += 2;
+        else if (text.startsWith("}", end)) end += 1;
+      }
+      const inserted = `{{${suggestion.token}}}`;
+      onTextChange(`${text.slice(0, trigger.start)}${inserted}${text.slice(end)}`);
+      const caretAfter = trigger.start + inserted.length;
+      requestAnimationFrame(() => {
+        element.focus();
+        element.setSelectionRange(caretAfter, caretAfter);
+        setCaret(caretAfter);
+      });
+    },
+    [onTextChange, text, trigger],
+  );
+
+  function handleEditorKeyDown(event: ReactKeyboardEvent<HTMLTextAreaElement>) {
+    if (!suggesting || !trigger) return;
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      event.preventDefault();
+      const step = event.key === "ArrowDown" ? 1 : -1;
+      setActiveSuggestion((current) => (current + step + suggestions.length) % suggestions.length);
+    } else if ((event.key === "Enter" || event.key === "Tab") && !event.shiftKey) {
+      event.preventDefault();
+      pickSuggestion(suggestions[Math.min(activeSuggestion, suggestions.length - 1)]);
+    } else if (event.key === "Escape") {
+      event.preventDefault();
+      event.stopPropagation();
+      setDismissedAt(trigger.start);
+    }
+  }
 
   async function pasteFromClipboard() {
     try {
@@ -420,7 +580,28 @@ const Stage = memo(function Stage({
         </div>
       </header>
 
-      <div className="stage-body">
+      {isIdle && startAt !== null ? (
+        <StartPoint
+          text={text}
+          startAt={startAt}
+          onUseCursor={() => {
+            const element = textareaRef.current;
+            if (!element) return;
+            const caret = element.selectionStart ?? 0;
+            onStartAtChange(characterCount(text.slice(0, caret)));
+          }}
+          onShow={() => {
+            const element = textareaRef.current;
+            if (!element) return;
+            const index = indexOfCodePoint(text, startAt);
+            element.focus();
+            element.setSelectionRange(index, index);
+          }}
+          onClear={() => onStartAtChange(null)}
+        />
+      ) : null}
+
+      <div className="stage-body" ref={stageBodyRef}>
         {showHighlight && isIdle ? <ScriptHighlight ref={highlightRef} text={text} /> : null}
         <textarea
           ref={textareaRef}
@@ -432,9 +613,30 @@ const Stage = memo(function Stage({
           spellCheck={false}
           autoCorrect="off"
           autoCapitalize="off"
-          onChange={(event) => onTextChange(event.target.value)}
-          onScroll={syncHighlight}
+          onChange={(event) => {
+            onTextChange(event.target.value);
+            readCaret();
+          }}
+          onSelect={readCaret}
+          onKeyDown={handleEditorKeyDown}
+          onBlur={() => setCaret(null)}
+          onScroll={() => {
+            syncHighlight();
+            if (suggesting) placeSuggestions();
+          }}
         />
+
+        {suggesting && suggestBox ? (
+          <CommandSuggest
+            suggestions={suggestions}
+            active={Math.min(activeSuggestion, suggestions.length - 1)}
+            left={suggestBox.left}
+            top={suggestBox.top}
+            above={suggestBox.above}
+            onPick={pickSuggestion}
+            onHover={setActiveSuggestion}
+          />
+        ) : null}
 
         <AnimatePresence initial={false}>
           {!isIdle ? (
@@ -816,6 +1018,8 @@ interface TransportProps {
   lastRun: SessionSummary | null;
   typing: TypingSettings;
   counts: ScriptCounts;
+  /** Set when the next run carries on part way through the script. */
+  startPercent: number | null;
   hotkeyStart: string;
   hotkeyPause: string;
   paletteKey: string;
@@ -830,6 +1034,7 @@ const Transport = memo(function Transport({
   lastRun,
   typing,
   counts,
+  startPercent,
   hotkeyStart,
   hotkeyPause,
   paletteKey,
@@ -909,8 +1114,14 @@ const Transport = memo(function Transport({
                   <Play size={15} fill="currentColor" strokeWidth={0} />
                 </span>
                 <span className="start-btn-copy">
-                  <span className="start-btn-label">Start typing</span>
-                  <span className="start-btn-sub">{typing.startDelaySecs}s head start</span>
+                  <span className="start-btn-label">
+                    {startPercent !== null ? "Carry on" : "Start typing"}
+                  </span>
+                  <span className="start-btn-sub">
+                    {startPercent !== null
+                      ? `from ${startPercent}%`
+                      : `${typing.startDelaySecs}s head start`}
+                  </span>
                 </span>
                 <Keycap>{formatHotkey(hotkeyStart)}</Keycap>
               </button>
@@ -1025,6 +1236,8 @@ export const TypePage = memo(function TypePage({
   lastRun,
   paletteKey,
   showScope,
+  startAt,
+  onStartAtChange,
   onTextChange,
   onTypingChange,
   onStart,
@@ -1092,6 +1305,8 @@ export const TypePage = memo(function TypePage({
         total={engine.total}
         counts={counts}
         scriptCommands={scriptCommands}
+        startAt={startAt}
+        onStartAtChange={onStartAtChange}
         onTextChange={onTextChange}
         notify={notify}
       />
@@ -1109,6 +1324,11 @@ export const TypePage = memo(function TypePage({
         lastRun={lastRun}
         typing={typing}
         counts={counts}
+        startPercent={
+          startAt !== null && engine.phase === "idle"
+            ? Math.floor((startAt / Math.max(1, characterCount(text))) * 100)
+            : null
+        }
         hotkeyStart={settings.hotkeyStart}
         hotkeyPause={settings.hotkeyPause}
         paletteKey={paletteKey}

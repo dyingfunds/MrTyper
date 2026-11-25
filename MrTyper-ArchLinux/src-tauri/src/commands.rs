@@ -22,6 +22,9 @@ pub struct BootstrapPayload {
 pub struct StartRequest {
     pub text: String,
     pub settings: AppSettings,
+    /// Script position (in characters) to start typing from; 0 is the top.
+    #[serde(default)]
+    pub start_at: usize,
 }
 
 #[tauri::command]
@@ -109,7 +112,7 @@ pub async fn start_typing(
     engine
         .inner()
         .clone()
-        .start(app, request.text, settings)
+        .start(app, request.text, settings, request.start_at)
 }
 
 #[tauri::command]

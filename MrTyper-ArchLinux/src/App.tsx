@@ -77,7 +77,7 @@ import {
   openReleasePage,
   type UpdateState,
 } from "./lib/updates";
-import { characterCount, formatWpm } from "./lib/utils";
+import { characterCount, formatWpm, indexOfCodePoint } from "./lib/utils";
 import { PresetsPage } from "./pages/PresetsPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { TypePage } from "./pages/TypePage";
@@ -151,6 +151,8 @@ function App() {
   const [direction, setDirection] = useState(1);
   const [engine, setEngine] = useState<LiveEngineState>(EMPTY_ENGINE);
   const [lastRun, setLastRun] = useState<SessionSummary | null>(null);
+  /** Where the next run starts, in code points; null starts at the top. */
+  const [startAt, setStartAt] = useState<number | null>(null);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
   const [maximized, setMaximized] = useState(false);
   const [uiPrefs, setUiPrefs] = useState<UiPrefs>(loadUiPrefs);
@@ -176,12 +178,14 @@ function App() {
   const textRef = useRef(text);
   const tabRef = useRef(tab);
   const presetsRef = useRef(presets);
+  const startAtRef = useRef(startAt);
 
   enginePhaseRef.current = engine.phase;
   settingsRef.current = settings;
   textRef.current = text;
   tabRef.current = tab;
   presetsRef.current = presets;
+  startAtRef.current = startAt;
 
   const resolvedTheme: ResolvedTheme =
     settings.theme === "system" ? (systemDark ? "dark" : "light") : settings.theme;
@@ -389,6 +393,12 @@ function App() {
         }
         activeRunId.current = null;
         dropPendingProgress();
+        // A run that stopped part way offers to carry on from where it got to.
+        setStartAt(
+          payload.reason !== "completed" && payload.typed > 0 && payload.typed < payload.total
+            ? payload.typed
+            : null,
+        );
         setLastRun({
           reason: payload.reason,
           typed: payload.typed,
@@ -710,10 +720,12 @@ function App() {
       phase: "countdown",
       countdown: settingsRef.current.typing.startDelaySecs,
       total: characterCount(script),
+      typed: startAtRef.current ?? 0,
     });
 
+    const from = startAtRef.current ?? 0;
     try {
-      await startTyping({ text: script, settings: settingsRef.current });
+      await startTyping({ text: script, settings: settingsRef.current, startAt: from });
     } catch (error) {
       setEngine((current) =>
         current.phase === "countdown" && current.runId === null ? EMPTY_ENGINE : current,
@@ -770,6 +782,20 @@ function App() {
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [setTab]);
+
+  // Editing the script keeps the start point only while the text before it
+  // is unchanged; otherwise it no longer points at the same place.
+  const handleTextChange = useCallback((next: string) => {
+    const previous = textRef.current;
+    setText(next);
+    setStartAt((current) => {
+      if (current === null) return null;
+      const end = indexOfCodePoint(previous, current);
+      return next.length > end && next.slice(0, end) === previous.slice(0, end)
+        ? current
+        : null;
+    });
+  }, []);
 
   const updateTyping = useCallback((patch: Partial<TypingSettings>) => {
     setSettings((current) => ({
@@ -1002,7 +1028,9 @@ function App() {
                       lastRun={lastRun}
                       paletteKey={paletteKey}
                       showScope={showScope}
-                      onTextChange={setText}
+                      startAt={startAt}
+                      onStartAtChange={setStartAt}
+                      onTextChange={handleTextChange}
                       onTypingChange={updateTyping}
                       onStart={handleStart}
                       onStop={handleStop}

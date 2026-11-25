@@ -13,6 +13,19 @@ export function normalizeScript(text: string): string {
   return text.includes("\r") ? text.replace(/\r\n?/g, "\n") : text;
 }
 
+/**
+ * The string index (UTF-16) of the code point at `codePoint`. The engine
+ * counts script positions in code points; the textarea counts in UTF-16.
+ */
+export function indexOfCodePoint(text: string, codePoint: number): number {
+  let index = 0;
+  for (let count = 0; count < codePoint && index < text.length; count += 1) {
+    const unit = text.charCodeAt(index);
+    index += unit >= 0xd800 && unit <= 0xdbff && index + 1 < text.length ? 2 : 1;
+  }
+  return index;
+}
+
 /** Counts Unicode code points, the unit the engine types in. */
 export function characterCount(text: string): number {
   let count = text.length;

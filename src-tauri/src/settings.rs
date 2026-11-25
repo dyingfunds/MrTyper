@@ -302,7 +302,135 @@ pub fn default_presets() -> Vec<Preset> {
             },
             updated_at: now.saturating_sub(86_400_000),
         },
+        Preset {
+            id: "starter-4".into(),
+            name: "Slow & realistic".into(),
+            typing: TypingSettings {
+                start_delay_secs: 6,
+                min_wpm: 30.0,
+                max_wpm: 48.0,
+                randomness: 70.0,
+                punctuation_factor: 3.0,
+                line_break_extra_ms: 820,
+                thinking_enabled: true,
+                thinking_every_chars: 48,
+                thinking_pause_max_ms: 3_200,
+                burst_enabled: true,
+                burst_intensity: 22.0,
+                typos_enabled: true,
+                typo_chance: 2.5,
+                fatigue_enabled: true,
+                fatigue_drift: 16.0,
+                late_notice_chance: 25.0,
+                typo_reaction_ms: 280,
+                backspace_ms: 130,
+                paragraph_extra_ms: 2_400,
+                word_pause_enabled: true,
+                word_pause_ms: 90,
+                capital_extra_ms: 110,
+                warmup_enabled: true,
+                warmup_chars: 220,
+                ..TypingSettings::default()
+            },
+            updated_at: now,
+        },
+        Preset {
+            id: "starter-5".into(),
+            name: "Hunt & peck".into(),
+            typing: TypingSettings {
+                start_delay_secs: 6,
+                min_wpm: 16.0,
+                max_wpm: 30.0,
+                randomness: 85.0,
+                punctuation_factor: 3.4,
+                line_break_extra_ms: 1_100,
+                thinking_enabled: true,
+                thinking_every_chars: 36,
+                thinking_pause_max_ms: 2_600,
+                burst_enabled: false,
+                burst_intensity: 10.0,
+                typos_enabled: true,
+                typo_chance: 4.0,
+                fatigue_enabled: false,
+                late_notice_chance: 10.0,
+                typo_reaction_ms: 420,
+                backspace_ms: 180,
+                paragraph_extra_ms: 2_000,
+                word_pause_enabled: true,
+                word_pause_ms: 160,
+                capital_extra_ms: 200,
+                ..TypingSettings::default()
+            },
+            updated_at: now,
+        },
+        Preset {
+            id: "starter-6".into(),
+            name: "Typo storm".into(),
+            typing: TypingSettings {
+                start_delay_secs: 5,
+                min_wpm: 60.0,
+                max_wpm: 95.0,
+                randomness: 80.0,
+                punctuation_factor: 2.0,
+                line_break_extra_ms: 300,
+                thinking_enabled: true,
+                thinking_every_chars: 80,
+                thinking_pause_max_ms: 1_200,
+                burst_enabled: true,
+                burst_intensity: 60.0,
+                typos_enabled: true,
+                typo_chance: 15.0,
+                fatigue_enabled: false,
+                late_notice_chance: 45.0,
+                typo_reaction_ms: 160,
+                backspace_ms: 70,
+                ..TypingSettings::default()
+            },
+            updated_at: now,
+        },
+        Preset {
+            id: "starter-7".into(),
+            name: "Tired, late night".into(),
+            typing: TypingSettings {
+                start_delay_secs: 6,
+                min_wpm: 34.0,
+                max_wpm: 64.0,
+                randomness: 78.0,
+                punctuation_factor: 2.8,
+                line_break_extra_ms: 700,
+                thinking_enabled: true,
+                thinking_every_chars: 44,
+                thinking_pause_max_ms: 4_000,
+                burst_enabled: true,
+                burst_intensity: 30.0,
+                typos_enabled: true,
+                typo_chance: 7.0,
+                fatigue_enabled: true,
+                fatigue_drift: 40.0,
+                late_notice_chance: 35.0,
+                typo_reaction_ms: 340,
+                backspace_ms: 110,
+                paragraph_extra_ms: 2_800,
+                word_pause_enabled: true,
+                word_pause_ms: 70,
+                ..TypingSettings::default()
+            },
+            updated_at: now,
+        },
     ]
+}
+
+/// Starter presets are handed out in rounds. A config saved before a round
+/// gets that round's presets once, on its next launch; one the user deleted
+/// afterwards doesn't come back.
+pub const STARTER_ROUND: u32 = 2;
+
+/// The round a starter preset was first shipped in.
+pub fn starter_round(id: &str) -> u32 {
+    match id {
+        "starter-1" | "starter-2" | "starter-3" => 1,
+        _ => 2,
+    }
 }
 
 pub fn parse_hotkey(value: &str) -> Result<Shortcut, String> {
@@ -408,7 +536,7 @@ mod tests {
     #[test]
     fn default_presets_have_unique_names_and_valid_typing() {
         let presets = default_presets();
-        assert_eq!(presets.len(), 3);
+        assert_eq!(presets.len(), 7);
         let mut names = std::collections::HashSet::new();
         for preset in presets {
             assert!(names.insert(preset.name.to_lowercase()));

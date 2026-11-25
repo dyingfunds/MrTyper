@@ -1306,3 +1306,131 @@
   justify-content: center;
 }
 
+
+/* ------------------------------------------------------------------ */
+/*  Command suggestions while typing / or {{                           */
+/* ------------------------------------------------------------------ */
+
+.command-suggest {
+  position: absolute;
+  z-index: 6;
+  width: 300px;
+  max-height: 300px;
+  padding: 5px;
+  overflow-y: auto;
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius-control);
+  background: var(--surface-2);
+  box-shadow: var(--shadow-pop);
+}
+
+.command-suggest.is-above {
+  transform: translateY(-100%);
+}
+
+.command-suggest-item {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 8px;
+  border-radius: var(--radius-small);
+  color: var(--text);
+  font-size: 12.5px;
+  cursor: pointer;
+}
+
+.command-suggest-item.is-active {
+  background: var(--accent-soft);
+  box-shadow: inset 0 0 0 1px var(--accent-line);
+}
+
+.command-suggest-item code {
+  flex: none;
+  color: var(--text-3);
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+.command-suggest-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.command-suggest-hint {
+  margin: 4px 4px 1px;
+  padding-top: 5px;
+  border-top: 1px solid var(--line);
+  color: var(--text-4);
+  font-size: 10.5px;
+}
+
+/* ------------------------------------------------------------------ */
+/*  Where the next run starts, after a stop                            */
+/* ------------------------------------------------------------------ */
+
+.start-point {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: none;
+  min-height: 40px;
+  padding: 6px 8px 6px 18px;
+  border-bottom: 1px solid var(--line);
+  background: var(--accent-soft);
+}
+
+.start-point-copy {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex: 1;
+  min-width: 0;
+}
+
+.start-point-copy .label {
+  flex: none;
+  color: var(--accent-text);
+}
+
+.start-point-preview {
+  min-width: 0;
+  padding: 0;
+  overflow: hidden;
+  border: 0;
+  background: none;
+  color: var(--text-2);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.start-point-preview:hover {
+  color: var(--text);
+}
+
+.start-point-actions {
+  display: flex;
+  gap: 6px;
+  flex: none;
+}
+
+.start-point-btn {
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius-small);
+  background: var(--surface-2);
+  color: var(--text);
+  font-size: 12px;
+}
+
+.start-point-btn:hover {
+  border-color: var(--line-3);
+  background: var(--surface-3);
+}

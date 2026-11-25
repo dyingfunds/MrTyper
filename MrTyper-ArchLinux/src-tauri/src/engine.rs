@@ -278,6 +278,7 @@ impl Engine {
         app: AppHandle,
         text: String,
         settings: AppSettings,
+        start_at: usize,
     ) -> Result<(), String> {
         let text = normalize_text(&text);
         if text.trim().is_empty() {
@@ -308,7 +309,8 @@ impl Engine {
         let spawn = thread::Builder::new()
             .name("mrtyper-typing-engine".into())
             .spawn(move || {
-                let outcome = run_session(&worker_app, &worker_run, &text, &worker_settings);
+                let outcome =
+                    run_session(&worker_app, &worker_run, &text, &worker_settings, start_at);
                 engine.finish(worker_app, worker_run, outcome);
             });
 
@@ -410,6 +412,7 @@ fn run_session(
     run: &Arc<RunControl>,
     text: &str,
     settings: &AppSettings,
+    start_at: usize,
 ) -> SessionOutcome {
     // Open the keyboard backend before the countdown, so a missing permission
     // or display backend is reported before the user clicks away.
@@ -482,7 +485,15 @@ fn run_session(
     emit_phase(app, run, "typing", None);
 
     let steps = script::parse(text, settings.script_commands);
-    let plan = build_plan(&steps, &settings.typing, None);
+    let (skipped, offset) = steps_before(&steps, start_at);
+    let mut plan = build_plan(&steps[skipped..], &settings.typing, None);
+    for entry in &mut plan.entries {
+        entry.source_end += offset;
+    }
+    if offset > 0 {
+        run.typed.store(offset, Ordering::SeqCst);
+        emit_progress(app, run, offset, 0.0, Some((plan.total_ms / 1000.0).round()), 0);
+    }
     let guarded_target = if settings.stop_on_focus_loss {
         Some(target)
     } else {
@@ -603,6 +614,20 @@ fn run_session(
         wpm: compute_wpm(run.delivered.load(Ordering::SeqCst), elapsed),
         message: None,
     }
+}
+
+/// How many whole steps lie before `start_at`, and how many script
+/// characters they cover. A start inside a command snaps back to the start of
+/// that command, so a command is never cut in half.
+fn steps_before(steps: &[Step], start_at: usize) -> (usize, usize) {
+    let mut covered = 0usize;
+    for (index, step) in steps.iter().enumerate() {
+        if covered + step.source_len > start_at {
+            return (index, covered);
+        }
+        covered += step.source_len;
+    }
+    (steps.len(), covered)
 }
 
 fn cancelled_outcome(run: &RunControl, started: Option<Instant>) -> SessionOutcome {
@@ -1340,5 +1365,19 @@ mod tests {
         let measured = compute_wpm(10, Duration::from_secs(12));
         assert!((measured - 10.0).abs() < 0.1);
         assert!(compute_wpm(5000, Duration::from_millis(1)) <= 999.0);
+    }
+
+    #[test]
+    fn a_start_point_skips_whole_steps_and_never_splits_a_command() {
+        // "ab" + "{{bold}}" (8 characters) + "cd"
+        let steps = script::parse("ab{{bold}}cd", true);
+        assert_eq!(steps_before(&steps, 0), (0, 0));
+        assert_eq!(steps_before(&steps, 2), (2, 2));
+        // Inside the command: snaps back to where it starts.
+        assert_eq!(steps_before(&steps, 5), (2, 2));
+        assert_eq!(steps_before(&steps, 10), (3, 10));
+        assert_eq!(steps_before(&steps, 11), (4, 11));
+        // Past the end: nothing left to type.
+        assert_eq!(steps_before(&steps, 99), (5, 12));
     }
 }

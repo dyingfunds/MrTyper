@@ -97,6 +97,8 @@ export interface BootstrapPayload {
 export interface StartRequest {
   text: string;
   settings: AppSettings;
+  /** Script position, in code points, to start typing from. 0 is the top. */
+  startAt?: number;
 }
 
 export interface EngineStatus {

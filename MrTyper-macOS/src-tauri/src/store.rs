@@ -6,7 +6,8 @@ use std::sync::Mutex;
 use serde::{Deserialize, Serialize};
 
 use crate::settings::{
-    default_presets, now_millis, AppSettings, Preset, TypingSettings,
+    default_presets, now_millis, starter_round, AppSettings, Preset, TypingSettings,
+    STARTER_ROUND,
 };
 
 static PRESET_COUNTER: AtomicU64 = AtomicU64::new(1);
@@ -33,6 +34,14 @@ pub struct PersistedState {
     pub presets: Vec<Preset>,
     pub last_text: String,
     pub window_bounds: Option<WindowBounds>,
+    /// The last round of starter presets this config has been given.
+    /// Configs from before rounds existed had the first round.
+    #[serde(default = "first_starter_round")]
+    pub starter_round: u32,
+}
+
+fn first_starter_round() -> u32 {
+    1
 }
 
 impl Default for PersistedState {
@@ -42,7 +51,31 @@ impl Default for PersistedState {
             presets: default_presets(),
             last_text: String::new(),
             window_bounds: None,
+            starter_round: STARTER_ROUND,
         }
+    }
+}
+
+impl PersistedState {
+    /// Add the starter presets shipped since this config was last saved,
+    /// skipping any whose id or name is already taken.
+    fn add_new_starters(&mut self) {
+        if self.starter_round >= STARTER_ROUND {
+            return;
+        }
+        for preset in default_presets() {
+            if starter_round(&preset.id) <= self.starter_round {
+                continue;
+            }
+            let taken = self.presets.iter().any(|existing| {
+                existing.id == preset.id
+                    || existing.name.to_lowercase() == preset.name.to_lowercase()
+            });
+            if !taken {
+                self.presets.push(preset);
+            }
+        }
+        self.starter_round = STARTER_ROUND;
     }
 }
 
@@ -65,6 +98,7 @@ impl Store {
                             preset
                         })
                         .collect();
+                    state.add_new_starters();
                     state
                 }
                 Err(error) => {
@@ -322,6 +356,33 @@ mod tests {
             .expect("first preset saves");
         let duplicate = store.add_preset("measured", TypingSettings::default());
         assert!(duplicate.is_err());
+
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn an_older_config_gets_the_new_starter_presets_once() {
+        let path = temporary_path("starters");
+        // A 2.2 config: the first three starters, one of them deleted, and
+        // a user preset that already uses one of the new names.
+        let old = serde_json::json!({
+            "presets": [
+                { "id": "starter-1", "name": "Fast & clean", "typing": {}, "updatedAt": 1 },
+                { "id": "mine", "name": "typo storm", "typing": {}, "updatedAt": 2 }
+            ]
+        });
+        fs::write(&path, old.to_string()).expect("config writes");
+
+        let store = Store::load(path.clone());
+        let ids: Vec<String> = store.snapshot().presets.into_iter().map(|p| p.id).collect();
+        // The deleted first-round starters stay deleted; the clashing name is
+        // skipped; the other new ones are added.
+        assert_eq!(ids, ["starter-1", "mine", "starter-4", "starter-5", "starter-7"]);
+
+        store.delete_preset("starter-4").expect("deletes");
+        drop(store);
+        let reloaded = Store::load(path.clone());
+        assert!(!reloaded.snapshot().presets.iter().any(|p| p.id == "starter-4"));
 
         let _ = fs::remove_file(path);
     }

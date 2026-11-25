@@ -144,8 +144,13 @@ class MockBackend {
     const chars = Array.from(text);
     const commands = new Map<number, { length: number; pauseMs: number; hold: boolean }>();
     let offset = 0;
+    // Like the engine: a start inside a command snaps back to its start.
+    let startIndex = 0;
+    const startAt = Math.max(0, Math.floor(request.startAt ?? 0));
     for (const piece of splitScript(text, this.state.settings.scriptCommands)) {
       const length = Array.from(piece.text).length;
+      if (offset <= startAt && offset + length > startAt) startIndex = offset;
+      else if (offset + length <= startAt) startIndex = offset + length;
       if (piece.command) {
         commands.set(offset, {
           length,
@@ -162,7 +167,7 @@ class MockBackend {
       chars,
       commands,
       settings: structuredClone(this.state.settings),
-      index: 0,
+      index: startIndex,
       phase: "countdown",
       countdown,
       startedAt: null,
