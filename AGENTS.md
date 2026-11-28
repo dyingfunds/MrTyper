@@ -142,7 +142,7 @@ From the repository root:
 | Check the apps are in sync | `node scripts/check-platform-sync.mjs [--fix]` |
 | Type-check or lint macOS / Linux from any OS | `node scripts/cross-check.mjs <macos\|linux> [check\|clippy]` (needs `rustup target add aarch64-apple-darwin x86_64-unknown-linux-gnu`) |
 | Bump the version everywhere | `node scripts/bump-version.mjs <x.y.z>` |
-| Regenerate icons | `pnpm tauri icon public/logo.svg -o <tmp>`, copy its `icon.png` to `src-tauri/icons/`, run `python scripts/generate_icons.py`, then copy the PNGs to both copies' `src-tauri/icons/` and `<tmp>/icon.icns` to the macOS copy. `python scripts/generate_installer_art.py` (needs Pillow) only looks right on Windows, where its fonts are |
+| Regenerate icons | `pnpm tauri icon public/logo.svg -o <tmp>`, copy its `icon.png` to `src-tauri/icons/`, run `python scripts/generate_icons.py`, then copy the PNGs to both copies' `src-tauri/icons/` and `<tmp>/icon.icns` to the macOS copy. `python scripts/generate_installer_art.py` (needs Pillow and `pnpm install`, for the app's fonts) rebuilds the Windows installer art on any OS |
 
 ## Verifying changes
 
@@ -198,4 +198,3 @@ Do **not** run `pnpm tauri:build` as part of a release, and never commit an inst
 - Script command shortcuts for Microsoft Word and other editors (today they target Google Docs).
 - The mini window on macOS and Linux is a plain rectangle; a rounded one needs `macOSPrivateApi` on macOS and transparency support on Linux.
 - README screenshots for macOS and Linux (the current ones are from the browser preview, in the Windows window style).
-- Regenerate the Windows installer art (`installer-sidebar.bmp`, `installer-header.bmp`) on Windows: it still shows the old green icon, because its script needs Windows fonts.

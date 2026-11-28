@@ -172,6 +172,9 @@ function App() {
   const lastToast = useRef<{ signature: string; time: number } | null>(null);
   const pendingProgress = useRef<ProgressPayload | null>(null);
   const progressFrame = useRef(0);
+  /** Set when the pending progress commit is a timer (low detail), not a frame. */
+  const progressIsTimer = useRef(false);
+  const lowDetailRef = useRef(false);
   const enginePhaseRef = useRef(engine.phase);
   const settingsRef = useRef(settings);
   const textRef = useRef(text);
@@ -195,8 +198,12 @@ function App() {
     editorFont,
     editorSize,
     showScope,
+    lowDetailTyping,
   } = uiPrefs;
   const colors = paletteColors(palette, customPalettes);
+  const lowDetail =
+    lowDetailTyping && (engine.phase === "typing" || engine.phase === "paused");
+  lowDetailRef.current = lowDetail;
   const reduceMotion = shouldReduceMotion(motionPref, systemReducesMotion);
   const paletteKey = `${resolvedTheme}:${colors.dark}:${colors.light}:${colors.accent}`;
 
@@ -322,7 +329,8 @@ function App() {
     function dropPendingProgress() {
       pendingProgress.current = null;
       if (progressFrame.current) {
-        cancelAnimationFrame(progressFrame.current);
+        if (progressIsTimer.current) window.clearTimeout(progressFrame.current);
+        else cancelAnimationFrame(progressFrame.current);
         progressFrame.current = 0;
       }
     }
@@ -386,7 +394,12 @@ function App() {
         if (activeRunId.current !== null && activeRunId.current !== payload.runId) return;
         pendingProgress.current = payload;
         if (!progressFrame.current) {
-          progressFrame.current = requestAnimationFrame(flushProgress);
+          // Low detail commits progress four times a second; otherwise once
+          // per frame.
+          progressIsTimer.current = lowDetailRef.current;
+          progressFrame.current = lowDetailRef.current
+            ? window.setTimeout(flushProgress, 250)
+            : requestAnimationFrame(flushProgress);
         }
       },
       "typing-keystroke": (payload) => {
@@ -539,6 +552,10 @@ function App() {
   useLayoutEffect(() => {
     applyReducedMotion(reduceMotion);
   }, [reduceMotion]);
+
+  useLayoutEffect(() => {
+    document.documentElement.classList.toggle("low-detail", lowDetail);
+  }, [lowDetail]);
 
   useLayoutEffect(() => {
     applyEditorLook(editorFont, editorSize);
@@ -1024,6 +1041,7 @@ function App() {
                       lastRun={lastRun}
                       paletteKey={paletteKey}
                       showScope={showScope}
+                      lowDetail={lowDetail}
                       startAt={startAt}
                       onStartAtChange={setStartAt}
                       onTextChange={handleTextChange}
@@ -1059,6 +1077,7 @@ function App() {
                       editorFont={editorFont}
                       editorSize={editorSize}
                       showScope={showScope}
+                      lowDetailTyping={lowDetailTyping}
                       systemReducesMotion={systemReducesMotion}
                       update={update}
                       onMotionChange={handleMotionChange}

@@ -5,7 +5,7 @@
 //! keystroke is reported through Tauri events.
 
 use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU64, AtomicUsize, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Condvar, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -136,6 +136,10 @@ struct RunControl {
     cancel: AtomicBool,
     paused: AtomicBool,
     stop_reason: AtomicU8,
+    /// Wakes a waiting worker at once when the session is paused, resumed or
+    /// stopped, so it can sleep through each delay instead of polling.
+    signal: Condvar,
+    signal_lock: Mutex<()>,
 }
 
 impl RunControl {
@@ -150,29 +154,57 @@ impl RunControl {
             cancel: AtomicBool::new(false),
             paused: AtomicBool::new(false),
             stop_reason: AtomicU8::new(STOP_NONE),
+            signal: Condvar::new(),
+            signal_lock: Mutex::new(()),
         }
     }
 
-    /// Wait with a response time fine enough for an emergency stop, while
-    /// freezing the countdown when the session is paused.
+    /// Wake the worker so it re-checks pause and cancel. Callers change those
+    /// flags first; taking the lock means a worker that has just checked them
+    /// is already waiting, so the wake-up can't be missed.
+    fn wake(&self) {
+        let _guard = self
+            .signal_lock
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        self.signal.notify_all();
+    }
+
+    /// Wait for `duration`, freezing the countdown while the session is
+    /// paused. Returns false as soon as the session is stopped. The thread
+    /// sleeps the whole time and is woken by `wake` for a pause, resume or
+    /// stop, so an emergency stop is still immediate.
     fn wait(&self, duration: Duration) -> bool {
-        const TICK: Duration = Duration::from_millis(8);
         let mut remaining = duration;
+        let mut guard = self
+            .signal_lock
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
 
         loop {
             if self.cancel.load(Ordering::SeqCst) {
                 return false;
             }
             if self.paused.load(Ordering::SeqCst) {
-                thread::sleep(TICK);
+                // The timeout is only a safety net; resume and stop wake us.
+                guard = self
+                    .signal
+                    .wait_timeout(guard, Duration::from_millis(250))
+                    .unwrap_or_else(|poisoned| poisoned.into_inner())
+                    .0;
                 continue;
             }
             if remaining.is_zero() {
                 return true;
             }
-            let step = TICK.min(remaining);
-            thread::sleep(step);
-            remaining = remaining.saturating_sub(step);
+            let slept_from = Instant::now();
+            guard = self
+                .signal
+                .wait_timeout(guard, remaining)
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .0;
+            // Woken early (pause, stop, or spuriously): keep what's left.
+            remaining = remaining.saturating_sub(slept_from.elapsed());
         }
     }
 
@@ -182,6 +214,7 @@ impl RunControl {
         }
         self.paused.store(true, Ordering::SeqCst);
         self.phase.store(PHASE_PAUSED, Ordering::SeqCst);
+        self.wake();
         true
     }
 
@@ -191,6 +224,7 @@ impl RunControl {
         }
         self.paused.store(false, Ordering::SeqCst);
         self.phase.store(PHASE_TYPING, Ordering::SeqCst);
+        self.wake();
         true
     }
 
@@ -202,6 +236,7 @@ impl RunControl {
             Ordering::SeqCst,
         );
         self.cancel.store(true, Ordering::SeqCst);
+        self.wake();
     }
 
     fn phase_name(&self) -> &'static str {
@@ -1365,6 +1400,45 @@ mod tests {
         let measured = compute_wpm(10, Duration::from_secs(12));
         assert!((measured - 10.0).abs() < 0.1);
         assert!(compute_wpm(5000, Duration::from_millis(1)) <= 999.0);
+    }
+
+    #[test]
+    fn waiting_sleeps_for_the_delay_and_a_stop_ends_it_at_once() {
+        let run = Arc::new(RunControl::new(1, 10));
+        let started = Instant::now();
+        assert!(run.wait(Duration::from_millis(40)));
+        let waited = started.elapsed();
+        assert!(waited >= Duration::from_millis(40), "returned early: {waited:?}");
+        assert!(waited < Duration::from_millis(400), "overslept: {waited:?}");
+
+        let stopper = Arc::clone(&run);
+        let handle = thread::spawn(move || {
+            thread::sleep(Duration::from_millis(30));
+            stopper.request_stop(StopIntent::Escape);
+        });
+        let started = Instant::now();
+        assert!(!run.wait(Duration::from_secs(10)));
+        assert!(started.elapsed() < Duration::from_secs(2), "the stop wasn't immediate");
+        handle.join().unwrap();
+    }
+
+    #[test]
+    fn a_pause_freezes_the_wait_until_resume() {
+        let run = Arc::new(RunControl::new(1, 10));
+        run.phase.store(PHASE_TYPING, Ordering::SeqCst);
+        let control = Arc::clone(&run);
+        let handle = thread::spawn(move || {
+            thread::sleep(Duration::from_millis(10));
+            assert!(control.pause());
+            thread::sleep(Duration::from_millis(150));
+            assert!(control.resume());
+        });
+        let started = Instant::now();
+        // 60 ms of waiting, with a 150 ms pause in the middle.
+        assert!(run.wait(Duration::from_millis(60)));
+        let waited = started.elapsed();
+        assert!(waited >= Duration::from_millis(200), "the pause didn't hold: {waited:?}");
+        handle.join().unwrap();
     }
 
     #[test]

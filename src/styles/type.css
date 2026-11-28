@@ -1435,3 +1435,27 @@
   border-color: var(--line-3);
   background: var(--surface-3);
 }
+
+/* ------------------------------------------------------------------ */
+/*  Low detail while typing (Setup → Appearance)                       */
+/*  During a run: no glows, filters, animations or transitions on the  */
+/*  Type page. App also commits progress four times a second, the dial */
+/*  stays still and the cadence scope is unmounted.                    */
+/* ------------------------------------------------------------------ */
+
+html.low-detail .type-page *,
+html.low-detail .type-page *::before,
+html.low-detail .type-page *::after {
+  animation: none !important;
+  transition: none !important;
+  box-shadow: none !important;
+  filter: none !important;
+  text-shadow: none !important;
+}
+
+.low-detail-tag {
+  margin-left: 4px;
+  padding: 1px 7px;
+  font-size: 10.5px;
+  color: var(--text-3);
+}

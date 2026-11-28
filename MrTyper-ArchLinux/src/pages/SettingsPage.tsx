@@ -70,6 +70,7 @@ interface SettingsPageProps {
   editorFont: EditorFont;
   editorSize: number;
   showScope: boolean;
+  lowDetailTyping: boolean;
   systemReducesMotion: boolean;
   update: UpdateState;
   onMotionChange: (motion: MotionPref) => void;
@@ -552,6 +553,7 @@ export const SettingsPage = memo(function SettingsPage({
   editorFont,
   editorSize,
   showScope,
+  lowDetailTyping,
   systemReducesMotion,
   update,
   onMotionChange,
@@ -747,6 +749,16 @@ export const SettingsPage = memo(function SettingsPage({
               checked={showScope}
               onChange={(next) => onUiPrefsChange({ showScope: next })}
               label="Show the cadence scope"
+            />
+          </Row>
+          <Row
+            title="Low detail while typing"
+            description="During a run, switch off the moving dial, the cadence scope, glows and animations, and redraw the rest a few times a second. Uses far less CPU; the typing itself is unchanged."
+          >
+            <Toggle
+              checked={lowDetailTyping}
+              onChange={(next) => onUiPrefsChange({ lowDetailTyping: next })}
+              label="Low detail while typing"
             />
           </Row>
           <Row

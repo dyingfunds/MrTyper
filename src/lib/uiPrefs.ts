@@ -28,6 +28,12 @@ export interface UiPrefs {
   editorSize: number;
   /** Show the cadence scope in the transport bar. */
   showScope: boolean;
+  /**
+   * While a run types, drop the costly live visuals (the moving dial, the
+   * cadence scope, glows and animations) and redraw the rest a few times a
+   * second instead of every frame.
+   */
+  lowDetailTyping: boolean;
 }
 
 export const EDITOR_SIZE_MIN = 11;
@@ -44,6 +50,7 @@ export const DEFAULT_UI_PREFS: UiPrefs = {
   editorFont: "mono",
   editorSize: 14.5,
   showScope: true,
+  lowDetailTyping: true,
 };
 
 export const REDUCED_MOTION_QUERY = "(prefers-reduced-motion: reduce)";
@@ -92,6 +99,10 @@ export function loadUiPrefs(): UiPrefs {
           : DEFAULT_UI_PREFS.editorSize,
       showScope:
         typeof parsed.showScope === "boolean" ? parsed.showScope : DEFAULT_UI_PREFS.showScope,
+      lowDetailTyping:
+        typeof parsed.lowDetailTyping === "boolean"
+          ? parsed.lowDetailTyping
+          : DEFAULT_UI_PREFS.lowDetailTyping,
     };
   } catch {
     return DEFAULT_UI_PREFS;

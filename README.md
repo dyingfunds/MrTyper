@@ -60,6 +60,7 @@ Everything lives on your machine. There are no accounts, analytics, or cloud syn
 - **Colour palettes.** Four three-colour palettes (*Graphite & Yellow*, *Bougainvillea*, *Cocoa & Sky*, *Sage & Tomato*), each with a dark and a light theme, plus up to 12 of your own, picked with a colour wheel or a hex code. MrTyper works out the rest of the theme and keeps text readable.
 - **An instrument, not a form.** Frameless window, matte surfaces, one loud accent colour, hardware-style faders, and spring-driven motion.
 - **Motion you control.** Animation follows the Windows "Animation effects" switch by default; **Setup → Motion** can force it fully on or keep it to simple fades.
+- **Low detail while typing.** On by default: during a run the dial holds still, the cadence scope and effects switch off, and progress redraws a few times a second, which cuts the window's CPU use by about 80%. Turn it off in **Setup → Appearance** to see everything live.
 - **Fast by design.** Keystroke events bypass React and are drawn straight to a canvas, progress updates are capped at one per frame, and decorative animation pauses while the window sits in the tray.
 - **Keyboard first.** <kbd>Ctrl</kbd>+<kbd>1</kbd>/<kbd>2</kbd>/<kbd>3</kbd> switch tabs; drop a text, Markdown or Word file onto the stage to load it.
 
@@ -166,7 +167,7 @@ python scripts/generate_icons.py
 python scripts/generate_installer_art.py
 ```
 
-The first script regenerates the PNG sizes and multi-resolution `.ico` used by the installer, executable, and tray. The second rebuilds the branded NSIS header and welcome-sidebar images in the app's graphite-and-accent style.
+The first script regenerates the PNG sizes and multi-resolution `.ico` used by the installer, executable, and tray. The second rebuilds the branded NSIS header and welcome-sidebar images in the Graphite & Yellow palette, using the app's own fonts from `node_modules` (run `pnpm install` first).
 
 ## Using MrTyper
 

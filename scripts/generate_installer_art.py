@@ -1,8 +1,12 @@
 """Generate the branded NSIS header and sidebar bitmaps.
 
-Run after regenerating the app icon set:
+Run after regenerating the app icon set (and `pnpm install`, which provides
+the app's own fonts):
 
     python scripts/generate_installer_art.py
+
+It uses the app's fonts (Geist, Geist Mono, Bricolage Grotesque) from
+node_modules, so the result is the same on Windows, macOS and Linux.
 
 Requires Pillow:  python -m pip install pillow
 """
@@ -16,28 +20,38 @@ from PIL import Image, ImageDraw, ImageFilter, ImageFont
 ROOT = Path(__file__).resolve().parent.parent
 ICONS = ROOT / "src-tauri" / "icons"
 ICON = ICONS / "icon-512.png"
-FONT_DIR = Path("C:/Windows/Fonts")
+FONTS = ROOT / "node_modules" / "@fontsource-variable"
 
 SIDEBAR_SIZE = (164, 314)
 HEADER_SIZE = (150, 57)
 SCALE = 4
 
-# The app's design tokens (src/styles/tokens.css).
-BG = (8, 9, 10)
-SURFACE = (15, 16, 18)
-LINE = (38, 40, 44)
-TEXT = (241, 242, 236)
-TEXT_2 = (168, 171, 162)
-TEXT_3 = (114, 117, 109)
-ACCENT = (255, 201, 60)  # Graphite & Yellow
+# The Graphite & Yellow palette's dark theme (src/lib/palette.ts).
+BG = (14, 15, 19)
+SURFACE = (22, 23, 26)
+LINE = (44, 45, 49)
+TEXT = (217, 218, 220)
+TEXT_2 = (140, 141, 144)
+TEXT_3 = (96, 97, 101)
+ACCENT = (255, 201, 60)
+DANGER = (255, 83, 64)
 
 
-def font(names: list[str], size: int) -> ImageFont.FreeTypeFont:
-    for name in names:
-        path = FONT_DIR / name
-        if path.exists():
-            return ImageFont.truetype(str(path), size)
-    return ImageFont.load_default()
+FONT_FILES = {
+    "sans": FONTS / "geist" / "files" / "geist-latin-wght-normal.woff2",
+    "mono": FONTS / "geist-mono" / "files" / "geist-mono-latin-wght-normal.woff2",
+    "display": FONTS / "bricolage-grotesque" / "files" / "bricolage-grotesque-latin-wght-normal.woff2",
+}
+
+
+def font(kind: str, size: int, weight: int = 400) -> ImageFont.FreeTypeFont:
+    """One of the app's variable fonts at a given weight."""
+    path = FONT_FILES[kind]
+    if not path.exists():
+        raise SystemExit(f"Missing font {path}. Run `pnpm install` first.")
+    loaded = ImageFont.truetype(str(path), size)
+    loaded.set_variation_by_axes([weight])
+    return loaded
 
 
 def accent_wash(base: Image.Image, center: tuple[int, int], radius: int, alpha: int) -> None:
@@ -83,7 +97,7 @@ def cadence_bars(draw: ImageDraw.ImageDraw, left: int, right: int, baseline: int
         top = baseline - round(height * level)
         # Fade the oldest bars, as the live scope does.
         alpha = round(255 * (0.25 + 0.75 * index / max(1, count - 1)))
-        color = (255, 83, 64, alpha) if index == count - 4 else (*ACCENT, alpha)
+        color = (*DANGER, alpha) if index == count - 4 else (*ACCENT, alpha)
         draw.rounded_rectangle((x, top, x + bar, baseline), radius=bar // 2, fill=color)
 
 
@@ -99,15 +113,15 @@ def draw_sidebar() -> Image.Image:
 
     # Accent kicker, like the page headings in the app.
     draw.rectangle((margin, 30 * SCALE, margin + 9 * SCALE, 31 * SCALE + SCALE), fill=ACCENT)
-    kicker = font(["consolab.ttf", "consola.ttf", "segoeui.ttf"], 6 * SCALE)
+    kicker = font("mono", 6 * SCALE, 600)
     draw.text((margin + 14 * SCALE, 27 * SCALE), "SETUP", font=kicker, fill=TEXT_3)
 
     paste_icon(base, (margin, 46 * SCALE, margin + 52 * SCALE, 98 * SCALE))
 
-    title = font(["seguibl.ttf", "segoeuib.ttf", "segoeui.ttf"], 25 * SCALE)
+    title = font("display", 25 * SCALE, 750)
     draw.text((margin - SCALE, 108 * SCALE), "MrTyper", font=title, fill=TEXT)
 
-    tagline = font(["segoeui.ttf"], 7 * SCALE)
+    tagline = font("sans", 7 * SCALE)
     draw.text((margin, 143 * SCALE), "Human-paced typing", font=tagline, fill=TEXT_2)
     draw.text((margin, 153 * SCALE), "for any window.", font=tagline, fill=TEXT_2)
 
@@ -119,7 +133,7 @@ def draw_sidebar() -> Image.Image:
     draw.line((margin, 263 * SCALE + SCALE, width - margin, 263 * SCALE + SCALE),
               fill=(*LINE, 255), width=SCALE)
 
-    mono = font(["consola.ttf", "segoeui.ttf"], 5 * SCALE + 2)
+    mono = font("mono", 5 * SCALE + 2, 500)
     draw.text((margin, 274 * SCALE), "LOCAL ONLY  ·  NO ACCOUNTS", font=mono, fill=TEXT_3)
 
     # Right-hand edge, separating the art from the installer page.
@@ -135,9 +149,9 @@ def draw_header() -> Image.Image:
     paste_icon(base, (10 * SCALE, 12 * SCALE, 43 * SCALE, 45 * SCALE))
 
     draw = ImageDraw.Draw(base)
-    title = font(["seguibl.ttf", "segoeuib.ttf", "segoeui.ttf"], 15 * SCALE)
+    title = font("display", 15 * SCALE, 750)
     draw.text((51 * SCALE, 11 * SCALE), "MrTyper", font=title, fill=TEXT)
-    mono = font(["consola.ttf", "segoeui.ttf"], 5 * SCALE + 2)
+    mono = font("mono", 5 * SCALE + 2, 500)
     draw.text((52 * SCALE, 34 * SCALE), "HUMAN-PACED TYPING", font=mono, fill=TEXT_3)
     draw.rectangle((52 * SCALE, 44 * SCALE, 64 * SCALE, 44 * SCALE + SCALE), fill=ACCENT)
     return base.convert("RGB").resize(HEADER_SIZE, Image.Resampling.LANCZOS)

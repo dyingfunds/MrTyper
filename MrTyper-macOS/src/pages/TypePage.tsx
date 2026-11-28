@@ -82,6 +82,8 @@ interface TypePageProps {
   lastRun: SessionSummary | null;
   paletteKey: string;
   showScope: boolean;
+  /** A run is typing with low detail on: no live dial, scope or effects. */
+  lowDetail: boolean;
   /** Where the next run starts, in code points; null is the top. */
   startAt: number | null;
   onStartAtChange: (startAt: number | null) => void;
@@ -217,6 +219,7 @@ interface StageProps {
   total: number;
   counts: ScriptCounts;
   scriptCommands: boolean;
+  lowDetail: boolean;
   startAt: number | null;
   onStartAtChange: (startAt: number | null) => void;
   onTextChange: (text: string) => void;
@@ -277,6 +280,7 @@ const Stage = memo(function Stage({
   total,
   counts,
   scriptCommands,
+  lowDetail,
   startAt,
   onStartAtChange,
   onTextChange,
@@ -523,6 +527,11 @@ const Stage = memo(function Stage({
         <span className="stage-title label">
           <span className={cn("led", `is-${phase}`)} />
           {isIdle ? "Script" : phase === "countdown" ? "Armed" : "Live"}
+          {lowDetail ? (
+            <span className="tag low-detail-tag" title="Low detail while typing is on (Setup)">
+              Low detail
+            </span>
+          ) : null}
         </span>
 
         <div className="stage-stats">
@@ -733,6 +742,8 @@ interface DeckProps {
   typing: TypingSettings;
   phase: Phase;
   liveWpm: number;
+  /** Freeze the dial at the range average instead of following live speed. */
+  lowDetail: boolean;
   hasScript: boolean;
   onTypingChange: (patch: Partial<TypingSettings>) => void;
   onFitTempo: (minutes: number) => void;
@@ -743,6 +754,7 @@ const Deck = memo(function Deck({
   typing,
   phase,
   liveWpm,
+  lowDetail,
   hasScript,
   onTypingChange,
   onFitTempo,
@@ -751,7 +763,7 @@ const Deck = memo(function Deck({
   const [tempoDragging, setTempoDragging] = useState(false);
   const [fitMinutes, setFitMinutes] = useState(10);
   const isIdle = phase === "idle";
-  const showLive = phase === "typing" || phase === "paused";
+  const showLive = !lowDetail && (phase === "typing" || phase === "paused");
   const score = humanScore(typing);
   const litCells = Math.round(score * METER_CELLS);
 
@@ -1250,6 +1262,7 @@ export const TypePage = memo(function TypePage({
   lastRun,
   paletteKey,
   showScope,
+  lowDetail,
   startAt,
   onStartAtChange,
   onTextChange,
@@ -1319,15 +1332,18 @@ export const TypePage = memo(function TypePage({
         total={engine.total}
         counts={counts}
         scriptCommands={scriptCommands}
+        lowDetail={lowDetail}
         startAt={startAt}
         onStartAtChange={onStartAtChange}
         onTextChange={onTextChange}
         notify={notify}
       />
+      {/* In low detail the dial stays still, so the deck needn't re-render. */}
       <Deck
         typing={typing}
         phase={engine.phase}
-        liveWpm={engine.wpm}
+        liveWpm={lowDetail ? 0 : engine.wpm}
+        lowDetail={lowDetail}
         hasScript={counts.characters > 0}
         onTypingChange={onTypingChange}
         onFitTempo={handleFitTempo}
@@ -1346,7 +1362,7 @@ export const TypePage = memo(function TypePage({
         hotkeyStart={settings.hotkeyStart}
         hotkeyPause={settings.hotkeyPause}
         paletteKey={paletteKey}
-        showScope={showScope}
+        showScope={showScope && !lowDetail}
         onStart={onStart}
         onStop={onStop}
         onPauseResume={onPauseResume}

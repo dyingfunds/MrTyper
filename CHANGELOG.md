@@ -4,6 +4,19 @@ All notable changes to MrTyper. The format follows [Keep a Changelog](https://ke
 
 ## [Unreleased]
 
+## [2.6.0] - 2026-11-28
+
+Low detail while typing, a quieter engine, and a Graphite & Yellow installer.
+
+### Added
+
+- **Low detail while typing** (**Setup → Appearance**, on by default). During a run, the dial holds still, the cadence scope is hidden, glows and animations on the Type page are switched off, and progress redraws four times a second instead of every frame. In WebKitGTK this cut the interface's CPU during a run by about 80%. The typing itself is unchanged.
+
+### Changed
+
+- **The typing engine sleeps between keys** instead of waking every 8 ms to check for Pause and Stop. Pause, Resume and Stop wake it at once, so Esc is still instant.
+- **The Windows installer's artwork** (welcome sidebar and header) is Graphite & Yellow with the new icon, in the app's own fonts. Its script now uses those fonts from `node_modules`, so it can be rebuilt on any OS.
+
 ## [2.5.0] - 2026-11-27
 
 More custom palettes, time left in the mini window, and a Graphite & Yellow icon.
@@ -191,7 +204,8 @@ The redesign release, and the first with macOS and Linux apps. Ready-made instal
 
 Initial release: a Windows app with a liquid-glass interface, the human-cadence typing engine, presets, global hotkeys, the tray, and an NSIS installer.
 
-[Unreleased]: https://github.com/dyingfunds/MrTyper/compare/v2.5.0...HEAD
+[Unreleased]: https://github.com/dyingfunds/MrTyper/compare/v2.6.0...HEAD
+[2.6.0]: https://github.com/dyingfunds/MrTyper/compare/v2.5.0...v2.6.0
 [2.5.0]: https://github.com/dyingfunds/MrTyper/compare/v2.4.0...v2.5.0
 [2.4.0]: https://github.com/dyingfunds/MrTyper/compare/v2.3.0...v2.4.0
 [2.3.0]: https://github.com/dyingfunds/MrTyper/compare/v2.2.1...v2.3.0
