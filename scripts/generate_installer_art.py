@@ -29,7 +29,7 @@ LINE = (38, 40, 44)
 TEXT = (241, 242, 236)
 TEXT_2 = (168, 171, 162)
 TEXT_3 = (114, 117, 109)
-ACCENT = (200, 255, 46)
+ACCENT = (255, 201, 60)  # Graphite & Yellow
 
 
 def font(names: list[str], size: int) -> ImageFont.FreeTypeFont:

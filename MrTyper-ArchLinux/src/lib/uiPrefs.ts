@@ -3,11 +3,12 @@
  * native settings file keeps its original shape.
  */
 import {
-  CUSTOM_PALETTE_ID,
-  DEFAULT_CUSTOM_COLORS,
+  CUSTOM_PREFIX,
   DEFAULT_PALETTE_ID,
   PALETTES,
+  cleanCustomPalettes,
   isHexColor,
+  type CustomPalette,
   type PaletteColors,
 } from "./palette";
 
@@ -18,9 +19,9 @@ export type MotionPref = "system" | "full" | "reduced";
 export type EditorFont = "mono" | "sans" | "serif";
 
 export interface UiPrefs {
-  /** One of PALETTES, or "custom" for `customColors`. */
+  /** The id of one of PALETTES or of `customPalettes`. */
   palette: string;
-  customColors: PaletteColors;
+  customPalettes: CustomPalette[];
   motion: MotionPref;
   editorFont: EditorFont;
   /** Script editor text size in px. */
@@ -38,7 +39,7 @@ export const STORAGE_KEY = "mrtyper.ui.v1";
 
 export const DEFAULT_UI_PREFS: UiPrefs = {
   palette: DEFAULT_PALETTE_ID,
-  customColors: DEFAULT_CUSTOM_COLORS,
+  customPalettes: [],
   motion: "system",
   editorFont: "mono",
   editorSize: 14.5,
@@ -52,18 +53,33 @@ export function loadUiPrefs(): UiPrefs {
     const raw = window.localStorage.getItem(STORAGE_KEY);
     if (!raw) return DEFAULT_UI_PREFS;
     const parsed = JSON.parse(raw) as Partial<Record<keyof UiPrefs, unknown>>;
-    const custom = (parsed.customColors ?? {}) as Partial<Record<keyof PaletteColors, unknown>>;
+    const legacy = parsed as Partial<Record<"customColors", unknown>>;
+    let customPalettes = cleanCustomPalettes(parsed.customPalettes);
+    let palette = typeof parsed.palette === "string" ? parsed.palette : "";
+    // 2.4.0 had a single custom palette, stored as `customColors`.
+    const old = (legacy.customColors ?? null) as Partial<PaletteColors> | null;
+    if (
+      !parsed.customPalettes &&
+      old &&
+      isHexColor(old.dark) &&
+      isHexColor(old.light) &&
+      isHexColor(old.accent)
+    ) {
+      customPalettes = [
+        {
+          id: `${CUSTOM_PREFIX}1`,
+          name: "Custom",
+          colors: { dark: old.dark, light: old.light, accent: old.accent },
+        },
+      ];
+      if (palette === "custom") palette = `${CUSTOM_PREFIX}1`;
+    }
+    const known =
+      PALETTES.some((item) => item.id === palette) ||
+      customPalettes.some((item) => item.id === palette);
     return {
-      palette:
-        parsed.palette === CUSTOM_PALETTE_ID ||
-        PALETTES.some((palette) => palette.id === parsed.palette)
-          ? (parsed.palette as string)
-          : DEFAULT_UI_PREFS.palette,
-      customColors: {
-        dark: isHexColor(custom.dark) ? custom.dark : DEFAULT_CUSTOM_COLORS.dark,
-        light: isHexColor(custom.light) ? custom.light : DEFAULT_CUSTOM_COLORS.light,
-        accent: isHexColor(custom.accent) ? custom.accent : DEFAULT_CUSTOM_COLORS.accent,
-      },
+      palette: known ? palette : DEFAULT_UI_PREFS.palette,
+      customPalettes,
       motion: MOTION_PREFS.includes(parsed.motion as MotionPref)
         ? (parsed.motion as MotionPref)
         : DEFAULT_UI_PREFS.motion,

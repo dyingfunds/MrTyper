@@ -20,9 +20,11 @@ All three share the same interface, engine, presets and settings format. Each pl
 ![MrTyper Type screen in dark mode](docs/preview-type-dark.png)
 
 <details>
-<summary>Light theme preview</summary>
+<summary>Light theme and colour palettes</summary>
 
 ![MrTyper Type screen in light mode](docs/preview-type-light.png)
+
+![The colour palettes in Setup](docs/preview-colours.png)
 
 </details>
 
@@ -37,9 +39,11 @@ Everything lives on your machine. There are no accounts, analytics, or cloud syn
 - **Any window, any text.** Unicode input through `SendInput` / `KEYEVENTF_UNICODE`, including emoji and multi-script text.
 - **Human cadence.** A dual-handle WPM range (10–300), keystroke randomness, punctuation and line-break pauses, thinking pauses, burst typing, QWERTY typo-and-correct behavior, and optional fatigue drift.
 - **Formatting while it types.** `{{bold}}`, `{{h1}}`, `{{bigger}}`, `{{bullets}}` and other commands in a script press the Google Docs shortcuts instead of being typed, `{{pause 2}}` holds still, and `{{hold}}` waits until you press the pause key. Commands are highlighted in the editor. See [Script commands](#script-commands-google-docs-formatting).
+- **Command suggestions.** Type `/` at the start of a word, or `{{`, and matching commands appear at the cursor: `/bo` offers Bold, `{{he` the headings. Arrow keys choose, Enter or Tab inserts.
+- **Carry on after a stop.** If a session stops part way, the next one can carry on from where it got to, from the cursor, or from the top.
 - **Open Word and Markdown files.** Open or drop a `.txt`, `.md` or `.docx` file. Word and Markdown formatting becomes script commands, so headings, bold, lists and alignment come back in Google Docs.
 - **Finish in.** Enter how long the script should take and press **Fit**; MrTyper sets the tempo to match.
-- **Mini window.** A small always-on-top bar with progress, Pause and Stop while a session runs. It never steals focus from the window being typed into.
+- **Mini window.** A small always-on-top bar with progress, the time and words left, and Pause and Stop while a session runs. It never steals focus from the window being typed into.
 - **More kinds of mistake.** Typos can be a neighbouring key, swapped letters, a doubled letter or a skipped one. Some are only noticed a few keys later and fixed with several backspaces. The pause before fixing and the backspace speed are adjustable.
 - **More kinds of pause.** Paragraph pauses at blank lines, small gaps between words, extra reach time before capitals, and a warm-up that starts slow.
 - **Type any value.** Every slider's number can be clicked and typed into. Out-of-range values snap to the nearest limit.
@@ -50,10 +54,11 @@ Everything lives on your machine. There are no accounts, analytics, or cloud syn
 - **Live stage.** While a session runs, the script inks in character by character behind a glowing caret that flashes red on typos. A tachometer needle follows the real effective WPM, and a cadence scope records every keystroke, typo, and correction.
 - **See the rhythm before you run it.** The cadence scope previews what your current settings will sound like, and every preset card is drawn from its own settings.
 - **Safety net.** Global <kbd>Esc</kbd> kills injection instantly. MrTyper can also stop automatically when focus leaves the target window.
-- **Presets.** Save, load, rename, and delete named performance profiles, and export or import them as files to share. Three starter profiles are included: *Fast & clean*, *Careful*, and *Sloppy*.
+- **Presets.** Save, load, rename, and delete named performance profiles, and export or import them as files to share. Seven starter profiles are included: *Fast & clean*, *Careful*, *Sloppy*, *Slow & realistic*, *Hunt & peck*, *Typo storm*, and *Tired, late night*.
 - **Persistent and private.** Text, settings, presets, and window position are stored in one local JSON file.
 - **Tray resident.** Closing the window hides it to the system tray, where quick start/stop and pause actions remain available.
-- **An instrument, not a form.** Frameless window, matte graphite surfaces, one loud accent colour (Volt, Ember, Ice, or Orchid), dark and light themes, hardware-style faders, and spring-driven motion.
+- **Colour palettes.** Four three-colour palettes (*Graphite & Yellow*, *Bougainvillea*, *Cocoa & Sky*, *Sage & Tomato*), each with a dark and a light theme, plus up to 12 of your own, picked with a colour wheel or a hex code. MrTyper works out the rest of the theme and keeps text readable.
+- **An instrument, not a form.** Frameless window, matte surfaces, one loud accent colour, hardware-style faders, and spring-driven motion.
 - **Motion you control.** Animation follows the Windows "Animation effects" switch by default; **Setup → Motion** can force it fully on or keep it to simple fades.
 - **Fast by design.** Keystroke events bypass React and are drawn straight to a canvas, progress updates are capped at one per frame, and decorative animation pauses while the window sits in the tray.
 - **Keyboard first.** <kbd>Ctrl</kbd>+<kbd>1</kbd>/<kbd>2</kbd>/<kbd>3</kbd> switch tabs; drop a text, Markdown or Word file onto the stage to load it.
@@ -195,7 +200,7 @@ Second item
 | `{{pause 2}}` `{{pause 1.5s}}` `{{wait 400ms}}` | Hold still (up to 60 s) | — |
 | `{{hold}}` | Pause the session until you press the pause key (F9) | — |
 
-Any other shortcut works too: `{{ctrl+shift+k}}`, `{{alt+f4}}`, `{{mod+b}}` (`mod` is Ctrl, or ⌘ on a Mac), and lone keys such as `{{enter}}`, `{{tab}}`, `{{left}}` or `{{f5}}`. Escape is never sent, because it is MrTyper's emergency stop. Names ignore case, spaces and dashes (`{{Font Size Up}}` works). Anything in double braces that isn't a command is typed as written, and **Setup → Script commands** can turn commands off entirely. The **{ }** button above the script inserts any command at the cursor.
+Any other shortcut works too: `{{ctrl+shift+k}}`, `{{alt+f4}}`, `{{mod+b}}` (`mod` is Ctrl, or ⌘ on a Mac), and lone keys such as `{{enter}}`, `{{tab}}`, `{{left}}` or `{{f5}}`. Escape is never sent, because it is MrTyper's emergency stop. Names ignore case, spaces and dashes (`{{Font Size Up}}` works). Anything in double braces that isn't a command is typed as written, and **Setup → Script commands** can turn commands off entirely. The **{ }** button above the script inserts any command at the cursor, and typing `/` or `{{` in the script opens a list of matching commands: arrow keys choose, Enter or Tab inserts, Esc closes.
 
 On macOS the same commands send the Mac shortcuts (⌘ instead of Ctrl, ⌥ instead of Alt; strikethrough is ⌘⇧X).
 

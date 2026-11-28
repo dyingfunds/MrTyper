@@ -116,6 +116,38 @@ export function splitScript(text: string, commands: boolean): ScriptPiece[] {
   return pieces;
 }
 
+/**
+ * The script position (in code points) where each typed word starts, in
+ * order. Commands are skipped. Used to count the words still to come.
+ */
+export function wordStarts(text: string, commands: boolean): number[] {
+  const starts: number[] = [];
+  let offset = 0;
+  let inWord = false;
+  for (const piece of splitScript(text, commands)) {
+    const length = Array.from(piece.text).length;
+    if (!piece.command) {
+      const isSpace = /\s/.test(piece.text);
+      if (!isSpace && !inWord) starts.push(offset);
+      inWord = !isSpace;
+    }
+    offset += length;
+  }
+  return starts;
+}
+
+/** How many of `starts` are at or after `position`. */
+export function wordsFrom(starts: number[], position: number): number {
+  let low = 0;
+  let high = starts.length;
+  while (low < high) {
+    const middle = (low + high) >> 1;
+    if (starts[middle] < position) low = middle + 1;
+    else high = middle;
+  }
+  return starts.length - low;
+}
+
 const COMMAND_HINT = /\{\{/;
 
 /** The text that actually gets typed, and the total time of pause commands. */

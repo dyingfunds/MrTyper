@@ -285,6 +285,7 @@
 .setting-row + .setting-row,
 .setting-row + .setting-note,
 .setting-note + .setting-row,
+.palette-block + .setting-row,
 .engine-row + .engine-row {
   border-top: 1px solid var(--line);
 }
@@ -338,7 +339,9 @@
   display: flex;
   flex-direction: column;
   gap: 12px;
-  padding: 0 0 14px;
+  /* Lines up with the rows around it; the Colours row above has the title. */
+  margin-top: -4px;
+  padding: 0 18px 16px;
 }
 
 .palette-grid {
@@ -402,6 +405,48 @@
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
+}
+
+.palette-custom-head {
+  display: flex;
+  grid-column: 1 / -1;
+  align-items: center;
+  gap: 8px;
+}
+
+.palette-name-input {
+  flex: 1;
+  min-width: 0;
+  height: 32px;
+  padding: 0 10px;
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius-small);
+  outline: none;
+  background: var(--surface-2);
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.palette-name-input:focus {
+  border-color: var(--accent-text);
+}
+
+.palette-card.is-new {
+  justify-content: space-between;
+  border-style: dashed;
+  background: transparent;
+}
+
+.palette-new-icon {
+  display: grid;
+  place-items: center;
+  height: 34px;
+  color: var(--text-3);
+}
+
+.palette-card.is-new:hover .palette-new-icon {
+  color: var(--accent-text);
 }
 
 .palette-custom-note {

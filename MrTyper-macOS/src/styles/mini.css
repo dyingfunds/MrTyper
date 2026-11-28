@@ -78,6 +78,21 @@ html.browser-preview .mini {
   background: var(--warn);
 }
 
+.mini-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.mini-remaining {
+  overflow: hidden;
+  color: var(--text-3);
+  font-size: 11px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
 .mini-label {
   overflow: hidden;
   font-size: 13px;

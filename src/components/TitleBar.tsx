@@ -1,15 +1,11 @@
 import { Minus, Square, X } from "lucide-react";
 import { memo, type ReactNode } from "react";
-import type { Phase } from "../types";
 import { cn, formatHotkey } from "../lib/utils";
 import { Keycap } from "./ui/Keycap";
 import { Logo } from "./Logo";
 import { PLATFORM } from "../lib/platform";
 
 interface TitleBarProps {
-  phase: Phase;
-  /** 0–100 while a session is typing. */
-  progress: number;
   maximized: boolean;
   hotkeyStart: string;
   hotkeyPause: string;
@@ -17,19 +13,6 @@ interface TitleBarProps {
   onMinimize: () => void;
   onMaximize: () => void;
   onClose: () => void;
-}
-
-function statusLabel(phase: Phase, progress: number): string {
-  switch (phase) {
-    case "countdown":
-      return "Get ready";
-    case "typing":
-      return `Typing ${progress}%`;
-    case "paused":
-      return `Paused ${progress}%`;
-    default:
-      return "Ready";
-  }
 }
 
 function ControlButton({
@@ -57,8 +40,6 @@ function ControlButton({
 }
 
 export const TitleBar = memo(function TitleBar({
-  phase,
-  progress,
   maximized,
   hotkeyStart,
   hotkeyPause,
@@ -80,15 +61,6 @@ export const TitleBar = memo(function TitleBar({
         <span className="brand-name">
           Mr<em>Typer</em>
         </span>
-      </div>
-
-      <div
-        className={cn("titlebar-status", `is-${phase}`)}
-        role="status"
-        aria-live="polite"
-      >
-        <span className={cn("led", `is-${phase}`)} />
-        {statusLabel(phase, progress)}
       </div>
 
       <div className="titlebar-right">

@@ -10,8 +10,9 @@ import {
 } from "./lib/bridge";
 import { normalizeSettings } from "./lib/defaults";
 import { applyPalette, paletteColors } from "./lib/palette";
+import { wordStarts, wordsFrom } from "./lib/scriptCommands";
 import { STORAGE_KEY, loadUiPrefs } from "./lib/uiPrefs";
-import { formatHotkey } from "./lib/utils";
+import { formatDuration, formatHotkey } from "./lib/utils";
 import type { Phase, ResolvedTheme } from "./types";
 
 interface MiniState {
@@ -20,6 +21,7 @@ interface MiniState {
   countdown: number | null;
   typed: number;
   total: number;
+  etaSecs: number | null;
   runId: number | null;
 }
 
@@ -29,6 +31,7 @@ const IDLE: MiniState = {
   countdown: null,
   typed: 0,
   total: 0,
+  etaSecs: null,
   runId: null,
 };
 
@@ -41,7 +44,25 @@ export function MiniBar() {
   const [state, setState] = useState<MiniState>(IDLE);
   const [hotkeyPause, setHotkeyPause] = useState("F9");
   const frame = useRef(0);
-  const pending = useRef<{ typed: number; total: number } | null>(null);
+  const pending = useRef<{ typed: number; total: number; etaSecs: number | null } | null>(null);
+  /** Where each word of the running script starts, for "words left". */
+  const [starts, setStarts] = useState<number[] | null>(null);
+  const startsRun = useRef<number | null>(null);
+
+  // The script of a run is saved when it starts; read it once per run.
+  const loadScript = (runId: number) => {
+    if (startsRun.current === runId) return;
+    startsRun.current = runId;
+    setStarts(null);
+    void bootstrap()
+      .then((snapshot) => {
+        if (startsRun.current !== runId) return;
+        const settings = normalizeSettings(snapshot.settings);
+        const text = snapshot.lastText.replace(/\r\n?/g, "\n");
+        setStarts(wordStarts(text, settings.scriptCommands));
+      })
+      .catch(() => undefined);
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -63,8 +84,10 @@ export function MiniBar() {
             countdown: status.countdown,
             typed: status.typed,
             total: status.total,
+            etaSecs: status.etaSecs,
             runId: status.runId,
           });
+          if (status.runId !== null) loadScript(status.runId);
         }
       } catch {
         // Live events fill the bar in anyway.
@@ -72,6 +95,7 @@ export function MiniBar() {
 
       const subscriptions = await Promise.all([
         onBackendEvent("typing-phase", (payload) => {
+          if (payload.phase !== "idle") loadScript(payload.runId);
           setState((current) => ({
             ...(current.runId === payload.runId ? current : IDLE),
             phase: payload.phase,
@@ -83,7 +107,11 @@ export function MiniBar() {
         }),
         onBackendEvent("typing-progress", (payload) => {
           // At most one render per frame, like the main window.
-          pending.current = { typed: payload.typed, total: payload.total };
+          pending.current = {
+            typed: payload.typed,
+            total: payload.total,
+            etaSecs: payload.etaSecs,
+          };
           if (frame.current) return;
           frame.current = requestAnimationFrame(() => {
             frame.current = 0;
@@ -99,6 +127,7 @@ export function MiniBar() {
             held: false,
             typed: payload.typed,
             total: payload.total,
+            etaSecs: null,
           }));
         }),
       ]);
@@ -125,9 +154,21 @@ export function MiniBar() {
     return () => window.removeEventListener("storage", repaint);
   }, []);
 
-  const { phase, held, countdown, typed, total } = state;
+  const { phase, held, countdown, typed, total, etaSecs } = state;
   const progress = total > 0 ? Math.min(1, typed / total) : 0;
   const percent = Math.floor(progress * 100);
+
+  // "2m 14s left · 312 words", while a run is typing or paused.
+  const remaining: string[] = [];
+  if (phase === "typing" || phase === "paused") {
+    if (etaSecs !== null && Number.isFinite(etaSecs)) {
+      remaining.push(`${formatDuration(etaSecs)} left`);
+    }
+    if (starts) {
+      const words = wordsFrom(starts, typed);
+      remaining.push(`${words.toLocaleString()} ${words === 1 ? "word" : "words"}`);
+    }
+  }
 
   let label = "Ready";
   if (phase === "countdown") label = `Starting in ${countdown ?? ""}`;
@@ -142,8 +183,15 @@ export function MiniBar() {
     >
       <div className="mini-info" data-tauri-drag-region>
         <span className="mini-led" data-tauri-drag-region />
-        <span className="mini-label" data-tauri-drag-region>
-          {label}
+        <span className="mini-copy" data-tauri-drag-region>
+          <span className="mini-label" data-tauri-drag-region>
+            {label}
+          </span>
+          {remaining.length ? (
+            <span className="mini-remaining num" data-tauri-drag-region>
+              {remaining.join(" · ")}
+            </span>
+          ) : null}
         </span>
         <span className="mini-percent num" data-tauri-drag-region>
           {phase === "countdown" || total === 0 ? "" : `${percent}%`}
@@ -187,5 +235,5 @@ function applyTheme(theme: ResolvedTheme | null) {
     theme ?? (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
   document.documentElement.dataset.theme = resolved;
   const prefs = loadUiPrefs();
-  applyPalette(paletteColors(prefs.palette, prefs.customColors), resolved);
+  applyPalette(paletteColors(prefs.palette, prefs.customPalettes), resolved);
 }

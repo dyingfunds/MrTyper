@@ -287,13 +287,27 @@ const Stage = memo(function Stage({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const showHighlight = scriptCommands && text.includes("{{");
 
-  // The highlight layer scrolls with the textarea it sits behind.
+  // The highlight layer scrolls with the textarea it sits behind, and is
+  // exactly as wide as the textarea's text area (its width minus any
+  // scrollbar), so both wrap every line at the same place. Not every webview
+  // honours `scrollbar-gutter`, so the width is measured, not assumed.
   const syncHighlight = useCallback(() => {
     const textarea = textareaRef.current;
     const layer = highlightRef.current;
-    if (textarea && layer) layer.scrollTop = textarea.scrollTop;
+    if (!textarea || !layer) return;
+    const width = `${textarea.clientWidth}px`;
+    if (layer.style.width !== width) layer.style.width = width;
+    layer.scrollTop = textarea.scrollTop;
   }, []);
   useLayoutEffect(syncHighlight, [syncHighlight, text, showHighlight]);
+  useEffect(() => {
+    const textarea = textareaRef.current;
+    if (!textarea || !showHighlight) return;
+    // A scrollbar appearing or the window resizing changes the text width.
+    const observer = new ResizeObserver(syncHighlight);
+    observer.observe(textarea);
+    return () => observer.disconnect();
+  }, [showHighlight, syncHighlight]);
   const dragDepth = useRef(0);
   const [dropping, setDropping] = useState(false);
   const isIdle = phase === "idle";

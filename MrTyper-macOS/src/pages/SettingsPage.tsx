@@ -8,10 +8,12 @@ import {
   Monitor,
   Moon,
   OctagonX,
+  Plus,
   RefreshCw,
   RotateCcw,
   ShieldCheck,
   Sun,
+  Trash2,
   Zap,
 } from "lucide-react";
 import {
@@ -33,9 +35,14 @@ import { springSnappy, springSoft } from "../lib/motion";
 import { PLATFORM, type PlatformNote } from "../lib/platform";
 import { COMMAND_GROUPS } from "../lib/scriptCommands";
 import {
-  CUSTOM_PALETTE_ID,
+  DEFAULT_PALETTE_ID,
+  MAX_CUSTOM_PALETTES,
+  MAX_PALETTE_NAME,
   PALETTES,
   cleanHex,
+  newCustomPalette,
+  paletteColors,
+  type CustomPalette,
   type PaletteColors,
 } from "../lib/palette";
 import {
@@ -58,14 +65,13 @@ interface SettingsPageProps {
   settings: AppSettings;
   running: boolean;
   palette: string;
-  customColors: PaletteColors;
+  customPalettes: CustomPalette[];
   motion: MotionPref;
   editorFont: EditorFont;
   editorSize: number;
   showScope: boolean;
   systemReducesMotion: boolean;
   update: UpdateState;
-  onPaletteChange: (palette: string) => void;
   onMotionChange: (motion: MotionPref) => void;
   onUiPrefsChange: (patch: Partial<UiPrefs>) => void;
   onCheckUpdates: () => void;
@@ -412,16 +418,29 @@ function ColorField({
 
 function PalettePicker({
   palette,
-  customColors,
-  onPaletteChange,
-  onCustomChange,
+  customPalettes,
+  onChange,
 }: {
   palette: string;
-  customColors: PaletteColors;
-  onPaletteChange: (palette: string) => void;
-  onCustomChange: (colors: PaletteColors) => void;
+  customPalettes: CustomPalette[];
+  onChange: (patch: { palette?: string; customPalettes?: CustomPalette[] }) => void;
 }) {
-  const customActive = palette === CUSTOM_PALETTE_ID;
+  const editing = customPalettes.find((item) => item.id === palette) ?? null;
+  const canAdd = customPalettes.length < MAX_CUSTOM_PALETTES;
+  const [nameDraft, setNameDraft] = useState(editing?.name ?? "");
+  useEffect(() => setNameDraft(editing?.name ?? ""), [editing?.id, editing?.name]);
+
+  const update = (id: string, change: Partial<CustomPalette>) =>
+    onChange({
+      customPalettes: customPalettes.map((item) => (item.id === id ? { ...item, ...change } : item)),
+    });
+
+  const addPalette = () => {
+    // Start from whatever palette is showing, so tweaking it is one step.
+    const created = newCustomPalette(customPalettes, paletteColors(palette, customPalettes));
+    onChange({ customPalettes: [...customPalettes, created], palette: created.id });
+  };
+
   return (
     <div className="palette-block">
       <div className="palette-grid" role="radiogroup" aria-label="Colour palette">
@@ -433,33 +452,81 @@ function PalettePicker({
             aria-checked={palette === option.id}
             className="palette-card"
             title={option.names.join(" · ")}
-            onClick={() => onPaletteChange(option.id)}
+            onClick={() => onChange({ palette: option.id })}
           >
             <PaletteSwatches colors={option.colors} />
             <span className="palette-name">{option.label}</span>
           </button>
         ))}
-        <button
-          type="button"
-          role="radio"
-          aria-checked={customActive}
-          className="palette-card"
-          title="Choose your own three colours"
-          onClick={() => onPaletteChange(CUSTOM_PALETTE_ID)}
-        >
-          <PaletteSwatches colors={customColors} />
-          <span className="palette-name">Custom</span>
-        </button>
+        {customPalettes.map((option) => (
+          <button
+            key={option.id}
+            type="button"
+            role="radio"
+            aria-checked={palette === option.id}
+            className="palette-card"
+            title="Your palette. Select it to edit its colours."
+            onClick={() => onChange({ palette: option.id })}
+          >
+            <PaletteSwatches colors={option.colors} />
+            <span className="palette-name">{option.name}</span>
+          </button>
+        ))}
+        {canAdd ? (
+          <button
+            type="button"
+            className="palette-card is-new"
+            title="Make your own palette from three colours"
+            onClick={addPalette}
+          >
+            <span className="palette-new-icon" aria-hidden="true">
+              <Plus size={16} strokeWidth={2} />
+            </span>
+            <span className="palette-name">New palette</span>
+          </button>
+        ) : null}
       </div>
-      {customActive ? (
+      {editing ? (
         <div className="palette-custom">
+          <div className="palette-custom-head">
+            <input
+              type="text"
+              className="palette-name-input"
+              value={nameDraft}
+              maxLength={MAX_PALETTE_NAME}
+              aria-label="Palette name"
+              onChange={(event) => setNameDraft(event.target.value)}
+              onBlur={() => {
+                const name = nameDraft.trim();
+                if (name && name !== editing.name) update(editing.id, { name });
+                else setNameDraft(editing.name);
+              }}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") event.currentTarget.blur();
+              }}
+            />
+            <Button
+              size="sm"
+              icon={Trash2}
+              onClick={() =>
+                onChange({
+                  customPalettes: customPalettes.filter((item) => item.id !== editing.id),
+                  palette: DEFAULT_PALETTE_ID,
+                })
+              }
+            >
+              Delete
+            </Button>
+          </div>
           {CUSTOM_ROLES.map((role) => (
             <ColorField
               key={role.key}
               label={role.label}
               hint={role.hint}
-              value={customColors[role.key]}
-              onChange={(hex) => onCustomChange({ ...customColors, [role.key]: hex })}
+              value={editing.colors[role.key]}
+              onChange={(hex) =>
+                update(editing.id, { colors: { ...editing.colors, [role.key]: hex } })
+              }
             />
           ))}
           <p className="palette-custom-note">
@@ -480,14 +547,13 @@ export const SettingsPage = memo(function SettingsPage({
   settings,
   running,
   palette,
-  customColors,
+  customPalettes,
   motion,
   editorFont,
   editorSize,
   showScope,
   systemReducesMotion,
   update,
-  onPaletteChange,
   onMotionChange,
   onUiPrefsChange,
   onCheckUpdates,
@@ -620,9 +686,8 @@ export const SettingsPage = memo(function SettingsPage({
           />
           <PalettePicker
             palette={palette}
-            customColors={customColors}
-            onPaletteChange={onPaletteChange}
-            onCustomChange={(colors) => onUiPrefsChange({ customColors: colors })}
+            customPalettes={customPalettes}
+            onChange={onUiPrefsChange}
           />
           <Row title="Script font" description="The typeface of the script editor.">
             <div className="segmented" role="radiogroup" aria-label="Script font">

@@ -9,7 +9,7 @@ const COPIED = [
   "padding-bottom", "padding-left", "font-family", "font-size", "font-weight",
   "font-style", "font-variant", "font-stretch", "line-height", "letter-spacing",
   "word-spacing", "text-transform", "text-indent", "tab-size", "white-space",
-  "overflow-wrap", "word-break", "scrollbar-gutter",
+  "overflow-wrap", "word-break",
 ];
 
 export interface CaretBox {
@@ -26,6 +26,10 @@ export function caretBox(element: HTMLTextAreaElement, position: number): CaretB
   for (const name of COPIED) {
     mirror.style.setProperty(name, style.getPropertyValue(name));
   }
+  // Wrap at the textarea's text width (no scrollbar), as the highlight does.
+  mirror.style.boxSizing = "border-box";
+  mirror.style.width = `${element.clientWidth}px`;
+  mirror.style.borderWidth = "0";
   mirror.style.position = "absolute";
   mirror.style.visibility = "hidden";
   mirror.style.overflow = "hidden";

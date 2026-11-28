@@ -44,7 +44,7 @@ function readPalette(node: HTMLElement): Palette {
     styles.getPropertyValue(name).trim() || fallback;
   const light = document.documentElement.dataset.theme === "light";
   return {
-    accent: read(light ? "--accent-text" : "--accent", "#c8ff2e"),
+    accent: read(light ? "--accent-text" : "--accent", "#ffc93c"),
     danger: read("--danger", "#ff5340"),
     warn: read("--warn", "#ffb224"),
     ghost: read("--text-3", "#72756d"),

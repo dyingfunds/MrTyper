@@ -52,7 +52,17 @@ export const PALETTES: Palette[] = [
   },
 ];
 
-export const CUSTOM_PALETTE_ID = "custom";
+/** A palette the user made: any three colours, under a name they choose. */
+export interface CustomPalette {
+  /** Always starts with "custom-". */
+  id: string;
+  name: string;
+  colors: PaletteColors;
+}
+
+export const CUSTOM_PREFIX = "custom-";
+export const MAX_CUSTOM_PALETTES = 12;
+export const MAX_PALETTE_NAME = 24;
 export const DEFAULT_PALETTE_ID = "graphite";
 export const DEFAULT_CUSTOM_COLORS: PaletteColors = {
   dark: "#1d2a38",
@@ -278,7 +288,44 @@ export function applyPalette(colors: PaletteColors, mode: ThemeMode): void {
     ?.setAttribute("content", tokens["--bg"]);
 }
 
-export function paletteColors(id: string, custom: PaletteColors): PaletteColors {
-  if (id === CUSTOM_PALETTE_ID) return custom;
-  return (PALETTES.find((palette) => palette.id === id) ?? PALETTES[0]).colors;
+export function paletteColors(id: string, customPalettes: CustomPalette[]): PaletteColors {
+  const custom = customPalettes.find((palette) => palette.id === id);
+  if (custom) return custom.colors;
+  return (
+    PALETTES.find((palette) => palette.id === id) ??
+    PALETTES.find((palette) => palette.id === DEFAULT_PALETTE_ID) ??
+    PALETTES[0]
+  ).colors;
+}
+
+/** A new custom palette starting from `colors`, with a free "Custom N" name. */
+export function newCustomPalette(existing: CustomPalette[], colors: PaletteColors): CustomPalette {
+  const taken = new Set(existing.map((palette) => palette.name.toLowerCase()));
+  let number = existing.length + 1;
+  while (taken.has(`custom ${number}`)) number += 1;
+  const id = `${CUSTOM_PREFIX}${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+  return { id, name: `Custom ${number}`, colors: { ...colors } };
+}
+
+/** Keep only well-formed custom palettes, at most MAX_CUSTOM_PALETTES. */
+export function cleanCustomPalettes(value: unknown): CustomPalette[] {
+  if (!Array.isArray(value)) return [];
+  const seen = new Set<string>();
+  const palettes: CustomPalette[] = [];
+  for (const item of value) {
+    if (!item || typeof item !== "object") continue;
+    const { id, name, colors } = item as Partial<CustomPalette>;
+    if (typeof id !== "string" || !id.startsWith(CUSTOM_PREFIX) || seen.has(id)) continue;
+    if (!colors || !isHexColor(colors.dark) || !isHexColor(colors.light) || !isHexColor(colors.accent)) {
+      continue;
+    }
+    seen.add(id);
+    palettes.push({
+      id,
+      name: (typeof name === "string" && name.trim() ? name.trim() : "Custom").slice(0, MAX_PALETTE_NAME),
+      colors: { dark: colors.dark, light: colors.light, accent: colors.accent },
+    });
+    if (palettes.length === MAX_CUSTOM_PALETTES) break;
+  }
+  return palettes;
 }

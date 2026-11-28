@@ -21,7 +21,7 @@ document.documentElement.dataset.platform = PLATFORM.id;
 // the system's preference; App repaints if the saved theme differs.
 const bootPrefs = loadUiPrefs();
 applyPalette(
-  paletteColors(bootPrefs.palette, bootPrefs.customColors),
+  paletteColors(bootPrefs.palette, bootPrefs.customPalettes),
   window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light",
 );
 applyReducedMotion(

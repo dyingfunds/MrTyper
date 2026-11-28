@@ -160,14 +160,15 @@
   caret-color: var(--accent-text);
 }
 
-/* The highlight layer must wrap exactly like the textarea above it, so both
-   keep room for a scrollbar whether or not one is showing. */
-.script-input,
-.script-highlight {
+/* The textarea keeps room for a scrollbar whether or not one is showing.
+   The highlight layer behind it never scrolls by itself; Stage sets its width
+   to the textarea's clientWidth, so both wrap every line alike. */
+.script-input {
   scrollbar-gutter: stable;
 }
 
 .script-highlight {
+  right: auto;
   z-index: 0;
   overflow: hidden;
   color: transparent;

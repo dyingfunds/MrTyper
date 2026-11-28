@@ -190,13 +190,13 @@ function App() {
     settings.theme === "system" ? (systemDark ? "dark" : "light") : settings.theme;
   const {
     palette,
-    customColors,
+    customPalettes,
     motion: motionPref,
     editorFont,
     editorSize,
     showScope,
   } = uiPrefs;
-  const colors = paletteColors(palette, customColors);
+  const colors = paletteColors(palette, customPalettes);
   const reduceMotion = shouldReduceMotion(motionPref, systemReducesMotion);
   const paletteKey = `${resolvedTheme}:${colors.dark}:${colors.light}:${colors.accent}`;
 
@@ -814,10 +814,6 @@ function App() {
     setSettings((current) => ({ ...current, ...patch }));
   }, []);
 
-  const handlePaletteChange = useCallback((next: string) => {
-    setUiPrefs((current) => ({ ...current, palette: next }));
-  }, []);
-
   const handleMotionChange = useCallback((next: MotionPref) => {
     setUiPrefs((current) => ({ ...current, motion: next }));
   }, []);
@@ -987,17 +983,11 @@ function App() {
 
   const isRunning = engine.phase !== "idle";
   const isCounting = ready && engine.phase === "countdown";
-  const progressPercent =
-    isRunning && engine.total > 0
-      ? Math.min(100, Math.floor((engine.typed / engine.total) * 100))
-      : 0;
 
   return (
     <MotionConfig reducedMotion={reduceMotion ? "always" : "never"} transition={springSoft}>
       <div className={`frame${maximized ? " is-maximized" : ""}`}>
         <TitleBar
-          phase={engine.phase}
-          progress={progressPercent}
           maximized={maximized}
           hotkeyStart={settings.hotkeyStart}
           hotkeyPause={settings.hotkeyPause}
@@ -1064,14 +1054,13 @@ function App() {
                       settings={settings}
                       running={isRunning}
                       palette={palette}
-                      customColors={customColors}
+                      customPalettes={customPalettes}
                       motion={motionPref}
                       editorFont={editorFont}
                       editorSize={editorSize}
                       showScope={showScope}
                       systemReducesMotion={systemReducesMotion}
                       update={update}
-                      onPaletteChange={handlePaletteChange}
                       onMotionChange={handleMotionChange}
                       onUiPrefsChange={handleUiPrefsChange}
                       onCheckUpdates={handleCheckUpdates}

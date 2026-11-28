@@ -90,7 +90,7 @@ Engine → UI events:
 - **`App.tsx`** holds all state and the native event stream, and routes the three pages: `TypePage`, `PresetsPage`, `SettingsPage`.
 - **`lib/bridge.ts`** wraps every Tauri call. In a plain browser it uses **`lib/mockBackend.ts`**, a localStorage-backed fake engine that never sends keystrokes, so `pnpm dev` works anywhere.
 - **`lib/scriptCommands.ts`** mirrors `script.rs` so the UI can count characters without commands, estimate pause time and offer the command menu. **Change the two together**; `script.rs` has the tests.
-- **`components/ScriptHighlight.tsx`** sits behind the script textarea and paints a chip under each command. It must wrap exactly like the textarea, so both share the same box rules in `type.css` (including `scrollbar-gutter: stable`).
+- **`components/ScriptHighlight.tsx`** sits behind the script textarea and paints a chip under each command. It must wrap exactly like the textarea: both share the same box rules in `type.css`, and Stage sets the layer's width to the textarea's measured `clientWidth`. Don't rely on `scrollbar-gutter` for this; WebKitGTK (the Linux webview) ignores it, which made the chips drift on Linux before 2.5.0. `lib/caret.ts`, which places the command-suggestion popup, measures the same way.
 - **`lib/importScript.ts`** opens `.txt`, `.md` and `.docx` files. Word and Markdown become a shared paragraph model, then one renderer writes the `{{…}}` commands (Google Docs behaviour: styles close at each line end, lists toggle off on the line after). `.docx` is unzipped with a small ZIP reader and `DecompressionStream`, so there is no dependency. It is loaded on demand.
 - **`lib/presetFiles.ts`** is the preset export/import format. Export goes through the `export_presets` command (writes to Downloads and never overwrites); import re-saves each preset with a unique name.
 - **`MiniBar.tsx`** is the mini window's UI. `main.tsx` renders it instead of `App` when the window label is `mini` (or `?view=mini` in a browser preview).
@@ -105,9 +105,9 @@ Performance rules. They're why the UI stays smooth at 300 WPM; keep them:
 - **`AnimatedNumber` writes to the DOM directly;** faders move by the `--p` / `--lo` / `--hi` CSS custom properties.
 
 Styling:
-- `styles/tokens.css` holds the colours, accents and fonts; light theme and accents are attribute selectors on `:root`.
+- `styles/tokens.css` holds the fonts and the fallback colours. The real colours come from the chosen palette: `lib/palette.ts` turns three colours (dark, light, accent) into every colour token for the light or dark theme, keeping contrast readable, and writes them inline on `<html>`. Built-in palettes are `PALETTES`; users' own are `customPalettes` in the UI prefs.
 - The other stylesheets are split by area: `shell`, `controls`, `type`, `pages` and `overlays`, then `calm.css` (the quieter skin, loaded last so it wins) and `mini.css` (the mini window).
-- Accent and motion preferences are cosmetic. They live in webview localStorage (`lib/uiPrefs.ts`), not in the native settings file.
+- Palette and motion preferences are cosmetic. They live in webview localStorage (`lib/uiPrefs.ts`), not in the native settings file. The mini window shares that storage and repaints on its `storage` event.
 - Reduced motion is applied with `html.reduce-motion`, not the media query, so the in-app Motion setting can override the OS.
 
 ### Platform layer at a glance
@@ -142,7 +142,7 @@ From the repository root:
 | Check the apps are in sync | `node scripts/check-platform-sync.mjs [--fix]` |
 | Type-check or lint macOS / Linux from any OS | `node scripts/cross-check.mjs <macos\|linux> [check\|clippy]` (needs `rustup target add aarch64-apple-darwin x86_64-unknown-linux-gnu`) |
 | Bump the version everywhere | `node scripts/bump-version.mjs <x.y.z>` |
-| Regenerate icons | `pnpm tauri icon public/logo.svg -o <tmp>`, copy its `icon.png` to `src-tauri/icons/`, then `python scripts/generate_icons.py` and `python scripts/generate_installer_art.py` (needs Pillow) |
+| Regenerate icons | `pnpm tauri icon public/logo.svg -o <tmp>`, copy its `icon.png` to `src-tauri/icons/`, run `python scripts/generate_icons.py`, then copy the PNGs to both copies' `src-tauri/icons/` and `<tmp>/icon.icns` to the macOS copy. `python scripts/generate_installer_art.py` (needs Pillow) only looks right on Windows, where its fonts are |
 
 ## Verifying changes
 
@@ -197,4 +197,5 @@ Do **not** run `pnpm tauri:build` as part of a release, and never commit an inst
 - Wayland: an XDG RemoteDesktop/libei path for GNOME and KDE, and the XDG GlobalShortcuts portal for hotkeys.
 - Script command shortcuts for Microsoft Word and other editors (today they target Google Docs).
 - The mini window on macOS and Linux is a plain rectangle; a rounded one needs `macOSPrivateApi` on macOS and transparency support on Linux.
-- README screenshots for macOS and Linux (the current ones are from Windows).
+- README screenshots for macOS and Linux (the current ones are from the browser preview, in the Windows window style).
+- Regenerate the Windows installer art (`installer-sidebar.bmp`, `installer-header.bmp`) on Windows: it still shows the old green icon, because its script needs Windows fonts.

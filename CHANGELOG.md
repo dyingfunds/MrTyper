@@ -4,6 +4,29 @@ All notable changes to MrTyper. The format follows [Keep a Changelog](https://ke
 
 ## [Unreleased]
 
+## [2.5.0] - 2026-11-27
+
+More custom palettes, time left in the mini window, and a Graphite & Yellow icon.
+
+### Added
+
+- **Several custom palettes.** **New palette** in **Setup → Appearance → Colours** adds one, starting from the colours on screen. Each has its own name, three colours and a **Delete** button, up to 12 in all. A custom palette from 2.4.0 carries over as "Custom".
+- **Time and words left in the mini window.** While a run types or is paused, the floating bar shows, for example, "2m 14s left · 312 words" under its status.
+
+### Changed
+
+- **The app icon is Graphite & Yellow**, matching the default palette, in the taskbar, dock and installers' app icons.
+- **The title bar no longer shows "Ready"** or the run status; the script stage and the transport already show it.
+
+### Fixed
+
+- **Command highlights drifted out of place on Linux.** The soft boxes behind `{{pause}}` and other commands slid further left the further down a long script went, because WebKitGTK ignores `scrollbar-gutter` and the highlight layer wrapped lines at a different width from the editor. It now takes the editor's measured text width, in every webview.
+- **The palette cards in Setup** now line up with the rows around them.
+
+### Docs
+
+- New README screenshots in Graphite & Yellow, including the colour palettes, and the README covers command suggestions, carrying on after a stop, the seven starter presets, palettes and the mini window's time left.
+
 ## [2.4.0] - 2026-11-27
 
 Colour palettes, and your own.
@@ -168,7 +191,8 @@ The redesign release, and the first with macOS and Linux apps. Ready-made instal
 
 Initial release: a Windows app with a liquid-glass interface, the human-cadence typing engine, presets, global hotkeys, the tray, and an NSIS installer.
 
-[Unreleased]: https://github.com/dyingfunds/MrTyper/compare/v2.4.0...HEAD
+[Unreleased]: https://github.com/dyingfunds/MrTyper/compare/v2.5.0...HEAD
+[2.5.0]: https://github.com/dyingfunds/MrTyper/compare/v2.4.0...v2.5.0
 [2.4.0]: https://github.com/dyingfunds/MrTyper/compare/v2.3.0...v2.4.0
 [2.3.0]: https://github.com/dyingfunds/MrTyper/compare/v2.2.1...v2.3.0
 [2.2.1]: https://github.com/dyingfunds/MrTyper/compare/v2.2.0...v2.2.1
