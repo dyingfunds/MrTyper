@@ -101,43 +101,6 @@
   --thumb-shadow: 0 2px 6px rgba(30, 32, 18, 0.28);
 }
 
-/* Accent families ---------------------------------------------------- */
-
-:root[data-accent="ember"] {
-  --accent: #ff6a2a;
-  --accent-ink: #1c0700;
-  --accent-text: #ff8650;
-  /* The default red sits too close to orange: shift typos and Stop to rose. */
-  --danger: #ff3d7f;
-}
-
-:root[data-accent="ice"] {
-  --accent: #4fe3ff;
-  --accent-ink: #00161c;
-  --accent-text: #6be8ff;
-}
-
-:root[data-accent="orchid"] {
-  --accent: #ff62d0;
-  --accent-ink: #22001a;
-  --accent-text: #ff82da;
-}
-
-:root[data-theme="light"][data-accent="ember"] {
-  --accent: #ff6524;
-  --accent-ink: #1c0700;
-  --accent-text: #c63c00;
-  --danger: #d4185a;
-}
-
-:root[data-theme="light"][data-accent="ice"] {
-  --accent: #2fd2f2;
-  --accent-ink: #00161c;
-  --accent-text: #00758c;
-}
-
-:root[data-theme="light"][data-accent="orchid"] {
-  --accent: #f755c6;
-  --accent-ink: #22001a;
-  --accent-text: #b31187;
-}
+/* Palettes ------------------------------------------------------------
+   The values above are the fallback before the first paint. The chosen
+   palette (lib/palette.ts) writes every colour token inline on <html>. */

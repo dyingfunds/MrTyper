@@ -2,7 +2,14 @@
  * Purely cosmetic preferences. They live in the webview's own storage so the
  * native settings file keeps its original shape.
  */
-export type Accent = "volt" | "ember" | "ice" | "orchid";
+import {
+  CUSTOM_PALETTE_ID,
+  DEFAULT_CUSTOM_COLORS,
+  DEFAULT_PALETTE_ID,
+  PALETTES,
+  isHexColor,
+  type PaletteColors,
+} from "./palette";
 
 /** "system" follows the operating system's reduced-motion preference. */
 export type MotionPref = "system" | "full" | "reduced";
@@ -11,7 +18,9 @@ export type MotionPref = "system" | "full" | "reduced";
 export type EditorFont = "mono" | "sans" | "serif";
 
 export interface UiPrefs {
-  accent: Accent;
+  /** One of PALETTES, or "custom" for `customColors`. */
+  palette: string;
+  customColors: PaletteColors;
   motion: MotionPref;
   editorFont: EditorFont;
   /** Script editor text size in px. */
@@ -23,19 +32,13 @@ export interface UiPrefs {
 export const EDITOR_SIZE_MIN = 11;
 export const EDITOR_SIZE_MAX = 24;
 
-export const ACCENTS: Array<{ id: Accent; label: string }> = [
-  { id: "volt", label: "Volt" },
-  { id: "ember", label: "Ember" },
-  { id: "ice", label: "Ice" },
-  { id: "orchid", label: "Orchid" },
-];
-
 const MOTION_PREFS: MotionPref[] = ["system", "full", "reduced"];
 const EDITOR_FONTS: EditorFont[] = ["mono", "sans", "serif"];
-const STORAGE_KEY = "mrtyper.ui.v1";
+export const STORAGE_KEY = "mrtyper.ui.v1";
 
 export const DEFAULT_UI_PREFS: UiPrefs = {
-  accent: "volt",
+  palette: DEFAULT_PALETTE_ID,
+  customColors: DEFAULT_CUSTOM_COLORS,
   motion: "system",
   editorFont: "mono",
   editorSize: 14.5,
@@ -49,10 +52,18 @@ export function loadUiPrefs(): UiPrefs {
     const raw = window.localStorage.getItem(STORAGE_KEY);
     if (!raw) return DEFAULT_UI_PREFS;
     const parsed = JSON.parse(raw) as Partial<Record<keyof UiPrefs, unknown>>;
+    const custom = (parsed.customColors ?? {}) as Partial<Record<keyof PaletteColors, unknown>>;
     return {
-      accent: ACCENTS.some((accent) => accent.id === parsed.accent)
-        ? (parsed.accent as Accent)
-        : DEFAULT_UI_PREFS.accent,
+      palette:
+        parsed.palette === CUSTOM_PALETTE_ID ||
+        PALETTES.some((palette) => palette.id === parsed.palette)
+          ? (parsed.palette as string)
+          : DEFAULT_UI_PREFS.palette,
+      customColors: {
+        dark: isHexColor(custom.dark) ? custom.dark : DEFAULT_CUSTOM_COLORS.dark,
+        light: isHexColor(custom.light) ? custom.light : DEFAULT_CUSTOM_COLORS.light,
+        accent: isHexColor(custom.accent) ? custom.accent : DEFAULT_CUSTOM_COLORS.accent,
+      },
       motion: MOTION_PREFS.includes(parsed.motion as MotionPref)
         ? (parsed.motion as MotionPref)
         : DEFAULT_UI_PREFS.motion,
@@ -81,10 +92,6 @@ export function saveUiPrefs(prefs: UiPrefs): void {
 
 export function shouldReduceMotion(motion: MotionPref, systemReduces: boolean): boolean {
   return motion === "reduced" || (motion === "system" && systemReduces);
-}
-
-export function applyAccent(accent: Accent): void {
-  document.documentElement.dataset.accent = accent;
 }
 
 const EDITOR_FONT_STACKS: Record<EditorFont, string> = {

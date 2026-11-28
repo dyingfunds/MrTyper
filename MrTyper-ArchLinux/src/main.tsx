@@ -6,9 +6,9 @@ import "@fontsource-variable/bricolage-grotesque/wdth.css";
 import "./index.css";
 import App from "./App";
 import { PLATFORM } from "./lib/platform";
+import { applyPalette, paletteColors } from "./lib/palette";
 import {
   REDUCED_MOTION_QUERY,
-  applyAccent,
   applyReducedMotion,
   loadUiPrefs,
   shouldReduceMotion,
@@ -16,9 +16,14 @@ import {
 
 document.documentElement.dataset.platform = PLATFORM.id;
 
-// Paint with the right accent and motion policy on the very first frame.
+// Paint with the right palette and motion policy on the very first frame.
+// The light or dark theme is only known once settings load, so start from
+// the system's preference; App repaints if the saved theme differs.
 const bootPrefs = loadUiPrefs();
-applyAccent(bootPrefs.accent);
+applyPalette(
+  paletteColors(bootPrefs.palette, bootPrefs.customColors),
+  window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light",
+);
 applyReducedMotion(
   shouldReduceMotion(bootPrefs.motion, window.matchMedia(REDUCED_MOTION_QUERY).matches),
 );

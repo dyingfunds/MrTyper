@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import {
   memo,
+  useEffect,
   useState,
   type CSSProperties,
   type KeyboardEvent as ReactKeyboardEvent,
@@ -32,10 +33,14 @@ import { springSnappy, springSoft } from "../lib/motion";
 import { PLATFORM, type PlatformNote } from "../lib/platform";
 import { COMMAND_GROUPS } from "../lib/scriptCommands";
 import {
-  ACCENTS,
+  CUSTOM_PALETTE_ID,
+  PALETTES,
+  cleanHex,
+  type PaletteColors,
+} from "../lib/palette";
+import {
   EDITOR_SIZE_MAX,
   EDITOR_SIZE_MIN,
-  type Accent,
   type EditorFont,
   type MotionPref,
   type UiPrefs,
@@ -52,14 +57,15 @@ import type { AppSettings, ThemeChoice, TypingSettings } from "../types";
 interface SettingsPageProps {
   settings: AppSettings;
   running: boolean;
-  accent: Accent;
+  palette: string;
+  customColors: PaletteColors;
   motion: MotionPref;
   editorFont: EditorFont;
   editorSize: number;
   showScope: boolean;
   systemReducesMotion: boolean;
   update: UpdateState;
-  onAccentChange: (accent: Accent) => void;
+  onPaletteChange: (palette: string) => void;
   onMotionChange: (motion: MotionPref) => void;
   onUiPrefsChange: (patch: Partial<UiPrefs>) => void;
   onCheckUpdates: () => void;
@@ -97,13 +103,11 @@ const TYPO_KINDS: Array<{ key: TypoKindKey; label: string; hint: string }> = [
   { key: "typoSkip", label: "Skipped", hint: "A letter left out: te for the" },
 ];
 
-/** Swatches show each accent as it appears in the dark theme. */
-const ACCENT_SWATCH: Record<Accent, string> = {
-  volt: "#c8ff2e",
-  ember: "#ff6a2a",
-  ice: "#4fe3ff",
-  orchid: "#ff62d0",
-};
+const CUSTOM_ROLES: Array<{ key: keyof PaletteColors; label: string; hint: string }> = [
+  { key: "dark", label: "Dark", hint: "Backgrounds in the dark theme, text in the light one" },
+  { key: "light", label: "Light", hint: "Text in the dark theme, backgrounds in the light one" },
+  { key: "accent", label: "Accent", hint: "Buttons, progress and highlights" },
+];
 
 /* ------------------------------------------------------------------ */
 /*  Building blocks                                                    */
@@ -345,20 +349,145 @@ function HotkeyRecorder({
 }
 
 /* ------------------------------------------------------------------ */
+/*  Colour palettes                                                    */
+/* ------------------------------------------------------------------ */
+
+function PaletteSwatches({ colors }: { colors: PaletteColors }) {
+  return (
+    <span className="palette-swatches" aria-hidden="true">
+      <i style={{ background: colors.dark }} />
+      <i style={{ background: colors.light }} />
+      <i style={{ background: colors.accent }} />
+    </span>
+  );
+}
+
+/** A colour wheel (the system picker) plus a hex field for one colour. */
+function ColorField({
+  label,
+  hint,
+  value,
+  onChange,
+}: {
+  label: string;
+  hint: string;
+  value: string;
+  onChange: (hex: string) => void;
+}) {
+  const [draft, setDraft] = useState(value);
+  useEffect(() => setDraft(value), [value]);
+  return (
+    <label className="color-field" title={hint}>
+      <input
+        type="color"
+        className="color-field-wheel"
+        value={value}
+        aria-label={`${label} colour`}
+        onChange={(event) => onChange(event.target.value)}
+      />
+      <span className="color-field-copy">
+        <span className="color-field-label">{label}</span>
+        <input
+          type="text"
+          className={cn("color-field-hex", cleanHex(draft) === null && "is-invalid")}
+          value={draft}
+          spellCheck={false}
+          maxLength={7}
+          aria-label={`${label} colour as hex`}
+          onChange={(event) => {
+            setDraft(event.target.value);
+            const hex = cleanHex(event.target.value);
+            if (hex && event.target.value.replace("#", "").length === 6) onChange(hex);
+          }}
+          onBlur={() => {
+            const hex = cleanHex(draft);
+            if (hex) onChange(hex);
+            else setDraft(value);
+          }}
+        />
+      </span>
+    </label>
+  );
+}
+
+function PalettePicker({
+  palette,
+  customColors,
+  onPaletteChange,
+  onCustomChange,
+}: {
+  palette: string;
+  customColors: PaletteColors;
+  onPaletteChange: (palette: string) => void;
+  onCustomChange: (colors: PaletteColors) => void;
+}) {
+  const customActive = palette === CUSTOM_PALETTE_ID;
+  return (
+    <div className="palette-block">
+      <div className="palette-grid" role="radiogroup" aria-label="Colour palette">
+        {PALETTES.map((option) => (
+          <button
+            key={option.id}
+            type="button"
+            role="radio"
+            aria-checked={palette === option.id}
+            className="palette-card"
+            title={option.names.join(" · ")}
+            onClick={() => onPaletteChange(option.id)}
+          >
+            <PaletteSwatches colors={option.colors} />
+            <span className="palette-name">{option.label}</span>
+          </button>
+        ))}
+        <button
+          type="button"
+          role="radio"
+          aria-checked={customActive}
+          className="palette-card"
+          title="Choose your own three colours"
+          onClick={() => onPaletteChange(CUSTOM_PALETTE_ID)}
+        >
+          <PaletteSwatches colors={customColors} />
+          <span className="palette-name">Custom</span>
+        </button>
+      </div>
+      {customActive ? (
+        <div className="palette-custom">
+          {CUSTOM_ROLES.map((role) => (
+            <ColorField
+              key={role.key}
+              label={role.label}
+              hint={role.hint}
+              value={customColors[role.key]}
+              onChange={(hex) => onCustomChange({ ...customColors, [role.key]: hex })}
+            />
+          ))}
+          <p className="palette-custom-note">
+            MrTyper builds the rest of the theme from these three and keeps text readable, so
+            the result may be a little lighter or darker than the colours you pick.
+          </p>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
 /*  Page                                                               */
 /* ------------------------------------------------------------------ */
 
 export const SettingsPage = memo(function SettingsPage({
   settings,
   running,
-  accent,
+  palette,
+  customColors,
   motion,
   editorFont,
   editorSize,
   showScope,
   systemReducesMotion,
   update,
-  onAccentChange,
+  onPaletteChange,
   onMotionChange,
   onUiPrefsChange,
   onCheckUpdates,
@@ -485,23 +614,16 @@ export const SettingsPage = memo(function SettingsPage({
               })}
             </div>
           </Row>
-          <Row title="Accent" description="The one loud colour.">
-            <div className="accent-picker" role="radiogroup" aria-label="Accent colour">
-              {ACCENTS.map((option) => (
-                <button
-                  key={option.id}
-                  type="button"
-                  role="radio"
-                  aria-checked={accent === option.id}
-                  aria-label={option.label}
-                  title={option.label}
-                  className="accent-swatch"
-                  style={{ "--swatch": ACCENT_SWATCH[option.id] } as CSSProperties}
-                  onClick={() => onAccentChange(option.id)}
-                />
-              ))}
-            </div>
-          </Row>
+          <Row
+            title="Colours"
+            description="A palette of three colours. Each works in both the light and dark theme."
+          />
+          <PalettePicker
+            palette={palette}
+            customColors={customColors}
+            onPaletteChange={onPaletteChange}
+            onCustomChange={(colors) => onUiPrefsChange({ customColors: colors })}
+          />
           <Row title="Script font" description="The typeface of the script editor.">
             <div className="segmented" role="radiogroup" aria-label="Script font">
               {editorFontOptions.map((option) => {

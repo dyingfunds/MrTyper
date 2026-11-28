@@ -4,6 +4,19 @@ All notable changes to MrTyper. The format follows [Keep a Changelog](https://ke
 
 ## [Unreleased]
 
+## [2.4.0] - 2026-11-27
+
+Colour palettes, and your own.
+
+### Added
+
+- **Four colour palettes**, each three colours that set the whole look in both the light and dark theme: **Graphite & Yellow** (Gray, Silver, Yellow), **Bougainvillea** (Olive Green, Whitewash, Bougainvillea Pink), **Cocoa & Sky** (Brown, Cream, Baby Blue) and **Sage & Tomato** (Sage, Off-White, Tomato Red). Choose one in **Setup → Appearance → Colours**.
+- **Custom palette.** Pick your own dark, light and accent colours with the colour picker or by typing a hex code. MrTyper builds the rest of the theme from them and keeps text and accents readable.
+
+### Changed
+
+- The four accent colours (Volt, Ember, Ice and Orchid) are replaced by the palettes. Graphite & Yellow is the new default.
+
 ## [2.3.0] - 2026-11-25
 
 Command suggestions as you type, carrying on after a stop, and four new presets.
@@ -155,7 +168,8 @@ The redesign release, and the first with macOS and Linux apps. Ready-made instal
 
 Initial release: a Windows app with a liquid-glass interface, the human-cadence typing engine, presets, global hotkeys, the tray, and an NSIS installer.
 
-[Unreleased]: https://github.com/dyingfunds/MrTyper/compare/v2.3.0...HEAD
+[Unreleased]: https://github.com/dyingfunds/MrTyper/compare/v2.4.0...HEAD
+[2.4.0]: https://github.com/dyingfunds/MrTyper/compare/v2.3.0...v2.4.0
 [2.3.0]: https://github.com/dyingfunds/MrTyper/compare/v2.2.1...v2.3.0
 [2.2.1]: https://github.com/dyingfunds/MrTyper/compare/v2.2.0...v2.2.1
 [2.2.0]: https://github.com/dyingfunds/MrTyper/compare/v2.1.2...v2.2.0

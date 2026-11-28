@@ -9,6 +9,8 @@ import {
   stopTyping,
 } from "./lib/bridge";
 import { normalizeSettings } from "./lib/defaults";
+import { applyPalette, paletteColors } from "./lib/palette";
+import { STORAGE_KEY, loadUiPrefs } from "./lib/uiPrefs";
 import { formatHotkey } from "./lib/utils";
 import type { Phase, ResolvedTheme } from "./types";
 
@@ -111,6 +113,18 @@ export function MiniBar() {
     };
   }, []);
 
+  // The palette is chosen in the main window; both share one storage, so a
+  // change there arrives here as a storage event.
+  useEffect(() => {
+    const repaint = (event: StorageEvent) => {
+      if (event.key !== STORAGE_KEY) return;
+      const theme = document.documentElement.dataset.theme;
+      applyTheme(theme === "light" || theme === "dark" ? theme : null);
+    };
+    window.addEventListener("storage", repaint);
+    return () => window.removeEventListener("storage", repaint);
+  }, []);
+
   const { phase, held, countdown, typed, total } = state;
   const progress = total > 0 ? Math.min(1, typed / total) : 0;
   const percent = Math.floor(progress * 100);
@@ -172,4 +186,6 @@ function applyTheme(theme: ResolvedTheme | null) {
   const resolved =
     theme ?? (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
   document.documentElement.dataset.theme = resolved;
+  const prefs = loadUiPrefs();
+  applyPalette(paletteColors(prefs.palette, prefs.customColors), resolved);
 }

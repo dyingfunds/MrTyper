@@ -59,16 +59,15 @@ import {
 import { pageEnter, pageExit, springSoft } from "./lib/motion";
 import {
   REDUCED_MOTION_QUERY,
-  applyAccent,
   applyEditorLook,
   applyReducedMotion,
   loadUiPrefs,
   saveUiPrefs,
   shouldReduceMotion,
-  type Accent,
   type MotionPref,
   type UiPrefs,
 } from "./lib/uiPrefs";
+import { applyPalette, paletteColors } from "./lib/palette";
 import { PLATFORM } from "./lib/platform";
 import {
   INITIAL_UPDATE_STATE,
@@ -189,9 +188,17 @@ function App() {
 
   const resolvedTheme: ResolvedTheme =
     settings.theme === "system" ? (systemDark ? "dark" : "light") : settings.theme;
-  const { accent, motion: motionPref, editorFont, editorSize, showScope } = uiPrefs;
+  const {
+    palette,
+    customColors,
+    motion: motionPref,
+    editorFont,
+    editorSize,
+    showScope,
+  } = uiPrefs;
+  const colors = paletteColors(palette, customColors);
   const reduceMotion = shouldReduceMotion(motionPref, systemReducesMotion);
-  const paletteKey = `${resolvedTheme}:${accent}`;
+  const paletteKey = `${resolvedTheme}:${colors.dark}:${colors.light}:${colors.accent}`;
 
   const setTab = useCallback((next: TabId) => {
     const from = TAB_ORDER.indexOf(tabRef.current);
@@ -525,8 +532,9 @@ function App() {
   }, [resolvedTheme]);
 
   useLayoutEffect(() => {
-    applyAccent(accent);
-  }, [accent]);
+    applyPalette(colors, resolvedTheme);
+    // `colors` is a fresh object each render; the key says when it changed.
+  }, [paletteKey]);
 
   useLayoutEffect(() => {
     applyReducedMotion(reduceMotion);
@@ -549,8 +557,6 @@ function App() {
   }, []);
 
   useEffect(() => {
-    const meta = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
-    meta?.setAttribute("content", resolvedTheme === "dark" ? "#08090a" : "#e4e3dc");
     void setBackdropTheme(resolvedTheme === "dark");
   }, [resolvedTheme]);
 
@@ -808,8 +814,8 @@ function App() {
     setSettings((current) => ({ ...current, ...patch }));
   }, []);
 
-  const handleAccentChange = useCallback((next: Accent) => {
-    setUiPrefs((current) => ({ ...current, accent: next }));
+  const handlePaletteChange = useCallback((next: string) => {
+    setUiPrefs((current) => ({ ...current, palette: next }));
   }, []);
 
   const handleMotionChange = useCallback((next: MotionPref) => {
@@ -1057,14 +1063,15 @@ function App() {
                     <SettingsPage
                       settings={settings}
                       running={isRunning}
-                      accent={accent}
+                      palette={palette}
+                      customColors={customColors}
                       motion={motionPref}
                       editorFont={editorFont}
                       editorSize={editorSize}
                       showScope={showScope}
                       systemReducesMotion={systemReducesMotion}
                       update={update}
-                      onAccentChange={handleAccentChange}
+                      onPaletteChange={handlePaletteChange}
                       onMotionChange={handleMotionChange}
                       onUiPrefsChange={handleUiPrefsChange}
                       onCheckUpdates={handleCheckUpdates}
